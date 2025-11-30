@@ -1,0 +1,9 @@
+Add real-time direct messaging and conversation features to the platform
+
+Implement WebSocket integration for real-time direct messages, add API endpoints for managing conversations and messages, and create a new frontend UI for the messaging page.
+
+Replit-Commit-Author: Agent
+Replit-Commit-Session-Id: 93e56fa0-36f5-4366-8bea-fc79ca0b79a9
+Replit-Commit-Checkpoint-Type: full_checkpoint
+Replit-Commit-Event-Id: fa700063-2b73-4be8-8645-1257ae273ec8
+Replit-Commit-Screenshot-Url: https://storage.googleapis.com/screenshot-production-us-central1/ad47063d-6fb4-4554-9e21-2b2579e09555/93e56fa0-36f5-4366-8bea-fc79ca0b79a9/29vCqD6
