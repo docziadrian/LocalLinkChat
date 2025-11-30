@@ -7,8 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card } from "@/components/ui/card";
-import { X, Minus, Send } from "lucide-react";
+import { X, Minus, Send, ImagePlus } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useToast } from "@/hooks/use-toast";
 import type { User, DirectMessage } from "@shared/schema";
 
 interface ChatWindow {
@@ -36,14 +37,50 @@ function formatTime(timestamp: string) {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+// Resize image to 100x100
+async function resizeImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = 100;
+        canvas.height = 100;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("Failed to get canvas context"));
+          return;
+        }
+        
+        const scale = Math.max(100 / img.width, 100 / img.height);
+        const scaledWidth = img.width * scale;
+        const scaledHeight = img.height * scale;
+        const offsetX = (100 - scaledWidth) / 2;
+        const offsetY = (100 - scaledHeight) / 2;
+        
+        ctx.drawImage(img, offsetX, offsetY, scaledWidth, scaledHeight);
+        resolve(canvas.toDataURL("image/jpeg", 0.8));
+      };
+      img.onerror = () => reject(new Error("Failed to load image"));
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.readAsDataURL(file);
+  });
+}
+
 export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
   const { t } = useI18n();
+  const { toast } = useToast();
   const { user: currentUser } = useAuth();
   const [openChats, setOpenChats] = useState<ChatWindow[]>([]);
   const [chatMessages, setChatMessages] = useState<Record<string, DirectMessage[]>>({});
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
+  const [selectedImages, setSelectedImages] = useState<Record<string, string>>({});
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
   const messagesEndRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   // Listen for incoming messages
   useEffect(() => {
@@ -64,9 +101,12 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
             [otherUserId]: [...(prev[otherUserId] || []), message],
           }));
 
+          // Check if this user's chat is open (not minimized) in the tray
+          const existingChat = openChats.find((c) => c.user.id === message.senderId);
+          const isChatOpenAndVisible = existingChat && !existingChat.isMinimized;
+
           // Open chat if not open and message is from someone else
           if (message.senderId !== currentUser?.id) {
-            const existingChat = openChats.find((c) => c.user.id === message.senderId);
             if (!existingChat && data.sender) {
               openChat(data.sender);
             }
@@ -75,9 +115,19 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
           // Sync with messages page
           queryClient.invalidateQueries({ queryKey: ["messages", otherUserId] });
           queryClient.invalidateQueries({ queryKey: ["/api/messages/conversations"] });
-          queryClient.invalidateQueries({ queryKey: ["/api/messages/unread-count"] });
-
-          onNewMessage?.(message);
+          
+          // Only update unread count if chat is NOT open/visible in tray
+          // If chat is open, the message is considered "read"
+          if (!isChatOpenAndVisible) {
+            queryClient.invalidateQueries({ queryKey: ["/api/messages/unread-count"] });
+            onNewMessage?.(message);
+          } else {
+            // Mark the message as read since chat is open
+            fetch(`/api/messages/${otherUserId}/mark-read`, { 
+              method: "POST", 
+              credentials: "include" 
+            }).catch(() => {});
+          }
         }
 
         if (data.type === "direct_message_sent") {
@@ -126,17 +176,14 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
     setOpenChats((prev) => {
       const existing = prev.find((c) => c.user.id === user.id);
       if (existing) {
-        // Just maximize it
         return prev.map((c) =>
           c.user.id === user.id ? { ...c, isMinimized: false } : c
         );
       }
-      // Add new chat (max 3 open)
       const newChats = [{ id: user.id, user, isMinimized: false }, ...prev.slice(0, 2)];
       return newChats;
     });
 
-    // Load messages
     loadMessages(user.id);
   }, []);
 
@@ -146,6 +193,9 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
       if (res.ok) {
         const messages = await res.json();
         setChatMessages((prev) => ({ ...prev, [userId]: messages }));
+        // Messages are marked as read on the server, update unread count
+        queryClient.invalidateQueries({ queryKey: ["/api/messages/unread-count"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/messages/conversations"] });
       }
     } catch (e) {
       console.error("Failed to load messages:", e);
@@ -154,6 +204,12 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
 
   const closeChat = (userId: string) => {
     setOpenChats((prev) => prev.filter((c) => c.user.id !== userId));
+    // Clear selected image for this chat
+    setSelectedImages((prev) => {
+      const next = { ...prev };
+      delete next[userId];
+      return next;
+    });
   };
 
   const toggleMinimize = (userId: string) => {
@@ -165,18 +221,29 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
   };
 
   const sendMessage = async (userId: string) => {
-    const content = inputValues[userId]?.trim();
-    if (!content || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    const content = inputValues[userId]?.trim() || "";
+    const imageData = selectedImages[userId];
+    
+    if (!content && !imageData) return;
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+
+    const messageContent = imageData 
+      ? `[IMAGE]${imageData}[/IMAGE]${content ? `\n${content}` : ""}`
+      : content;
 
     wsRef.current.send(JSON.stringify({
       type: "direct_message",
       receiverId: userId,
-      content,
+      content: messageContent,
     }));
 
     setInputValues((prev) => ({ ...prev, [userId]: "" }));
+    setSelectedImages((prev) => {
+      const next = { ...prev };
+      delete next[userId];
+      return next;
+    });
     
-    // Sync with messages page
     setTimeout(() => {
       queryClient.invalidateQueries({ queryKey: ["messages", userId] });
       queryClient.invalidateQueries({ queryKey: ["/api/messages/conversations"] });
@@ -191,6 +258,55 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
       receiverId: userId,
       isTyping,
     }));
+  };
+
+  const handleImageSelect = async (userId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const validTypes = ["image/png", "image/jpeg", "image/jpg"];
+    if (!validTypes.includes(file.type)) {
+      toast({ title: "Only PNG, JPG, and JPEG images are allowed", variant: "destructive" });
+      return;
+    }
+
+    try {
+      const resizedImage = await resizeImage(file);
+      setSelectedImages((prev) => ({ ...prev, [userId]: resizedImage }));
+    } catch (error) {
+      toast({ title: "Failed to process image", variant: "destructive" });
+    }
+  };
+
+  const removeSelectedImage = (userId: string) => {
+    setSelectedImages((prev) => {
+      const next = { ...prev };
+      delete next[userId];
+      return next;
+    });
+    if (fileInputRefs.current[userId]) {
+      fileInputRefs.current[userId]!.value = "";
+    }
+  };
+
+  // Render message content with image support
+  const renderMessageContent = (content: string) => {
+    const imageMatch = content.match(/\[IMAGE\](.*?)\[\/IMAGE\]/);
+    if (imageMatch) {
+      const imageData = imageMatch[1];
+      const textContent = content.replace(/\[IMAGE\].*?\[\/IMAGE\]/, "").trim();
+      return (
+        <div>
+          <img 
+            src={imageData} 
+            alt="Image" 
+            className="w-20 h-20 object-cover rounded-lg mb-1"
+          />
+          {textContent && <p className="text-xs sm:text-sm">{textContent}</p>}
+        </div>
+      );
+    }
+    return <p className="text-xs sm:text-sm">{content}</p>;
   };
 
   // Expose openChat method globally for other components
@@ -311,7 +427,7 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
                               : "bg-muted rounded-bl-md"
                           }`}
                         >
-                          <p className="text-xs sm:text-sm">{msg.content}</p>
+                          {renderMessageContent(msg.content)}
                           <p className="text-[9px] sm:text-[10px] opacity-70 mt-0.5">
                             {formatTime(msg.timestamp)}
                           </p>
@@ -333,9 +449,45 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
                   </div>
                 </ScrollArea>
 
+                {/* Image Preview */}
+                {selectedImages[chat.user.id] && (
+                  <div className="px-2 sm:px-3 pt-1">
+                    <div className="relative inline-block">
+                      <img 
+                        src={selectedImages[chat.user.id]} 
+                        alt="Preview" 
+                        className="w-16 h-16 object-cover rounded-lg border"
+                      />
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        className="absolute -top-1 -right-1 h-5 w-5"
+                        onClick={() => removeSelectedImage(chat.user.id)}
+                      >
+                        <X className="w-2 h-2" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Input */}
                 <div className="p-2 sm:p-3 border-t">
+                  <input
+                    type="file"
+                    ref={(el) => (fileInputRefs.current[chat.user.id] = el)}
+                    onChange={(e) => handleImageSelect(chat.user.id, e)}
+                    accept="image/png,image/jpeg,image/jpg"
+                    className="hidden"
+                  />
                   <div className="flex gap-1 sm:gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 sm:h-9 sm:w-9 flex-shrink-0"
+                      onClick={() => fileInputRefs.current[chat.user.id]?.click()}
+                    >
+                      <ImagePlus className="w-3 h-3 sm:w-4 sm:h-4" />
+                    </Button>
                     <Input
                       value={inputValues[chat.user.id] || ""}
                       onChange={(e) => {
@@ -356,7 +508,7 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
                       size="icon"
                       className="h-8 w-8 sm:h-9 sm:w-9"
                       onClick={() => sendMessage(chat.user.id)}
-                      disabled={!inputValues[chat.user.id]?.trim()}
+                      disabled={!inputValues[chat.user.id]?.trim() && !selectedImages[chat.user.id]}
                     >
                       <Send className="w-3 h-3 sm:w-4 sm:h-4" />
                     </Button>

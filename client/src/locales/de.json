@@ -135,7 +135,12 @@
     "messageConnections": "Sie können nur verbundenen Benutzern Nachrichten senden",
     "today": "Heute",
     "yesterday": "Gestern",
-    "newMessages": "Neue Nachrichten"
+    "newMessages": "Neue Nachrichten",
+    "removeConnection": "Verbindung entfernen",
+    "removeConnectionConfirm": "Sind Sie sicher, dass Sie diese Verbindung entfernen möchten? Sie können sich dann nicht mehr gegenseitig Nachrichten senden.",
+    "connectionRemoved": "Verbindung entfernt",
+    "attachImage": "Bild anhängen",
+    "imageSent": "Bild"
   },
   "notifications": {
     "title": "Benachrichtigungen",
@@ -167,7 +172,11 @@
     "updateFailed": "Profil konnte nicht aktualisiert werden",
     "userNotFound": "Benutzer nicht gefunden",
     "profileNotExist": "Dieses Profil existiert nicht oder wurde entfernt.",
-    "requestPending": "Anfrage ausstehend"
+    "requestPending": "Anfrage ausstehend",
+    "userPosts": "Beiträge von {{name}}",
+    "noPosts": "Noch keine Beiträge",
+    "noPostsDescription": "Dieser Benutzer hat noch keine Beiträge geteilt.",
+    "viewPost": "Beitrag anzeigen"
   },
   "chat": {
     "liveSupport": "Live-Support",
@@ -256,6 +265,14 @@
     "justNow": "Gerade eben",
     "minutesAgo": "vor {{count}}m",
     "hoursAgo": "vor {{count}}h",
-    "daysAgo": "vor {{count}}T"
+    "daysAgo": "vor {{count}}T",
+    "share": "Teilen",
+    "sharePost": "Beitrag teilen",
+    "shareWithConnections": "Mit Ihren Verbindungen teilen",
+    "selectConnections": "Wählen Sie Verbindungen zum Teilen aus",
+    "noConnectionsToShare": "Keine Verbindungen zum Teilen",
+    "sendTo": "Senden an",
+    "postShared": "Beitrag erfolgreich geteilt!",
+    "sharedPost": "Hat einen Beitrag mit Ihnen geteilt"
   }
 }

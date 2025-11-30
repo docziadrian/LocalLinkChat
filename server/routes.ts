@@ -242,6 +242,16 @@ export async function registerRoutes(
   });
 
   // Get user recommendations
+  // Get posts by user ID - MUST be before :id route
+  app.get("/api/users/:userId/posts", async (req: Request, res: Response) => {
+    try {
+      const posts = await storage.getPostsByUserId(req.params.userId);
+      res.json(posts);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get user posts" });
+    }
+  });
+
   app.get("/api/users/recommendations", async (req: Request, res: Response) => {
     try {
       const currentUser = await getCurrentUser(req);
@@ -439,6 +449,9 @@ export async function registerRoutes(
 
       const updatedConnection = await storage.updateConnectionStatus(req.params.id, status);
 
+      // Delete the original connection_request notification sent to the receiver (current user)
+      await storage.deleteNotificationByConnectionId(req.params.id);
+
       if (status === "accepted") {
         // Create notification for the requester
         await storage.createNotification({
@@ -483,6 +496,31 @@ export async function registerRoutes(
       res.json(updatedConnection);
     } catch (error) {
       res.status(500).json({ error: "Failed to update connection" });
+    }
+  });
+
+  // Delete connection (remove)
+  app.delete("/api/connections/:id", async (req: Request, res: Response) => {
+    try {
+      const currentUser = await getCurrentUser(req);
+      if (!currentUser) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const connection = await storage.getConnection(req.params.id);
+      if (!connection) {
+        return res.status(404).json({ error: "Connection not found" });
+      }
+
+      // Only participants can delete the connection
+      if (connection.requesterId !== currentUser.id && connection.receiverId !== currentUser.id) {
+        return res.status(403).json({ error: "Not authorized" });
+      }
+
+      await storage.deleteConnection(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete connection" });
     }
   });
 
@@ -626,6 +664,22 @@ export async function registerRoutes(
       res.json(messages);
     } catch (error) {
       res.status(500).json({ error: "Failed to get messages" });
+    }
+  });
+
+  // Mark messages from a user as read
+  app.post("/api/messages/:userId/mark-read", async (req: Request, res: Response) => {
+    try {
+      const currentUser = await getCurrentUser(req);
+      if (!currentUser) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const otherUserId = req.params.userId;
+      await storage.markMessagesFromUserAsRead(currentUser.id, otherUserId);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to mark messages as read" });
     }
   });
 

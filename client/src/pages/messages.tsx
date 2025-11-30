@@ -4,6 +4,7 @@ import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
 import { useOpenChat } from "@/components/chat-tray";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -11,7 +12,21 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Send, ArrowLeft, MessageSquare, Users, ExternalLink } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Send, ArrowLeft, MessageSquare, Users, ExternalLink, MoreVertical, UserX, ImagePlus, X } from "lucide-react";
 import type { User, DirectMessage, Connection } from "@shared/schema";
 
 interface ConversationWithUser {
@@ -62,12 +77,50 @@ function ConversationSkeleton() {
   );
 }
 
+// Resize image to 100x100
+async function resizeImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = 100;
+        canvas.height = 100;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("Failed to get canvas context"));
+          return;
+        }
+        
+        // Calculate scaling to cover 100x100 while maintaining aspect ratio
+        const scale = Math.max(100 / img.width, 100 / img.height);
+        const scaledWidth = img.width * scale;
+        const scaledHeight = img.height * scale;
+        const offsetX = (100 - scaledWidth) / 2;
+        const offsetY = (100 - scaledHeight) / 2;
+        
+        ctx.drawImage(img, offsetX, offsetY, scaledWidth, scaledHeight);
+        resolve(canvas.toDataURL("image/jpeg", 0.8));
+      };
+      img.onerror = () => reject(new Error("Failed to load image"));
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function MessagesPage() {
   const { t } = useI18n();
   const { user: currentUser } = useAuth();
+  const { toast } = useToast();
   const openChat = useOpenChat();
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [messageInput, setMessageInput] = useState("");
+  const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Get accepted connections
@@ -99,19 +152,54 @@ export default function MessagesPage() {
     enabled: !!selectedUserId,
   });
 
+  // Mark messages as read and update unread count when selecting a conversation
+  useEffect(() => {
+    if (selectedUserId && messages.length > 0) {
+      // Messages are marked as read on the server when fetched
+      // Invalidate unread count to update sidebar badge
+      queryClient.invalidateQueries({ queryKey: ["/api/messages/unread-count"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/messages/conversations"] });
+    }
+  }, [selectedUserId, messages.length]);
+
   const sendMutation = useMutation({
-    mutationFn: async (content: string) => {
+    mutationFn: async ({ content, imageData }: { content: string; imageData?: string }) => {
       if (!selectedUserId || !currentUser) return;
+      const messageContent = imageData 
+        ? `[IMAGE]${imageData}[/IMAGE]${content ? `\n${content}` : ""}`
+        : content;
       return apiRequest("POST", "/api/messages", {
         receiverId: selectedUserId,
-        content,
+        content: messageContent,
       });
     },
     onSuccess: () => {
       setMessageInput("");
+      setSelectedImage(null);
       refetchMessages();
       queryClient.invalidateQueries({ queryKey: ["/api/messages/conversations"] });
       queryClient.invalidateQueries({ queryKey: ["/api/messages/unread-count"] });
+    },
+  });
+
+  // Remove connection mutation
+  const removeConnectionMutation = useMutation({
+    mutationFn: async () => {
+      const connection = acceptedConnections.find(
+        c => c.otherUser.id === selectedUserId
+      );
+      if (!connection) throw new Error("Connection not found");
+      return apiRequest("DELETE", `/api/connections/${connection.id}`);
+    },
+    onSuccess: () => {
+      toast({ title: t("messages.connectionRemoved") });
+      setSelectedUserId(null);
+      setRemoveDialogOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/connections/accepted"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/messages/conversations"] });
+    },
+    onError: () => {
+      toast({ title: t("errors.general"), variant: "destructive" });
     },
   });
 
@@ -126,14 +214,41 @@ export default function MessagesPage() {
     const interval = setInterval(() => {
       refetchMessages();
       queryClient.invalidateQueries({ queryKey: ["/api/messages/conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/messages/unread-count"] });
     }, 3000);
     
     return () => clearInterval(interval);
   }, [selectedUserId, refetchMessages]);
 
   const handleSendMessage = () => {
-    if (messageInput.trim() && currentUser) {
-      sendMutation.mutate(messageInput.trim());
+    if ((messageInput.trim() || selectedImage) && currentUser) {
+      sendMutation.mutate({ content: messageInput.trim(), imageData: selectedImage || undefined });
+    }
+  };
+
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const validTypes = ["image/png", "image/jpeg", "image/jpg"];
+    if (!validTypes.includes(file.type)) {
+      toast({ title: "Only PNG, JPG, and JPEG images are allowed", variant: "destructive" });
+      return;
+    }
+
+    try {
+      const resizedImage = await resizeImage(file);
+      setSelectedImage(resizedImage);
+    } catch (error) {
+      toast({ title: t("errors.uploadFailed"), variant: "destructive" });
+    }
+  };
+
+  const removeSelectedImage = () => {
+    setSelectedImage(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
   };
 
@@ -162,8 +277,27 @@ export default function MessagesPage() {
 
   // Mobile: show either contacts list or chat
   // Desktop: show both side by side
-  const showContactsList = !selectedUserId;
   const showChat = selectedUserId && selectedUser;
+
+  // Helper to render message content (with image support)
+  const renderMessageContent = (content: string) => {
+    const imageMatch = content.match(/\[IMAGE\](.*?)\[\/IMAGE\]/);
+    if (imageMatch) {
+      const imageData = imageMatch[1];
+      const textContent = content.replace(/\[IMAGE\].*?\[\/IMAGE\]/, "").trim();
+      return (
+        <div>
+          <img 
+            src={imageData} 
+            alt={t("messages.imageSent")} 
+            className="w-24 h-24 object-cover rounded-lg mb-1"
+          />
+          {textContent && <p className="text-sm">{textContent}</p>}
+        </div>
+      );
+    }
+    return <p className="text-sm">{content}</p>;
+  };
 
   return (
     <div className="h-[calc(100vh-10rem)] sm:h-[calc(100vh-12rem)]">
@@ -242,7 +376,9 @@ export default function MessagesPage() {
                             )}
                           </div>
                           <p className="text-xs text-muted-foreground truncate">
-                            {conv?.lastMessage || contact.jobPosition || t("messages.noMessages")}
+                            {conv?.lastMessage?.includes("[IMAGE]") 
+                              ? t("messages.imageSent")
+                              : (conv?.lastMessage || contact.jobPosition || t("messages.noMessages"))}
                           </p>
                         </div>
                         {conv && conv.unreadCount > 0 && (
@@ -287,15 +423,33 @@ export default function MessagesPage() {
                   </p>
                 </div>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleOpenInTray(selectedUser)}
-                className="hidden sm:flex"
-              >
-                <ExternalLink className="w-4 h-4 sm:mr-2" />
-                <span className="hidden sm:inline">Open in Tray</span>
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleOpenInTray(selectedUser)}
+                  className="hidden sm:flex"
+                >
+                  <ExternalLink className="w-4 h-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Open in Tray</span>
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <MoreVertical className="w-4 h-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={() => setRemoveDialogOpen(true)}
+                    >
+                      <UserX className="w-4 h-4 mr-2" />
+                      {t("messages.removeConnection")}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
 
             {/* Messages Area */}
@@ -332,7 +486,7 @@ export default function MessagesPage() {
                             : "bg-muted rounded-bl-md"
                         }`}
                       >
-                        <p className="text-sm">{msg.content}</p>
+                        {renderMessageContent(msg.content)}
                         <p className="text-[10px] sm:text-xs opacity-70 mt-1">
                           {formatDate(msg.timestamp)}
                         </p>
@@ -344,8 +498,44 @@ export default function MessagesPage() {
               )}
             </ScrollArea>
 
+            {/* Image Preview */}
+            {selectedImage && (
+              <div className="px-3 sm:px-4 pt-2">
+                <div className="relative inline-block">
+                  <img 
+                    src={selectedImage} 
+                    alt="Preview" 
+                    className="w-20 h-20 object-cover rounded-lg border"
+                  />
+                  <Button
+                    variant="destructive"
+                    size="icon"
+                    className="absolute -top-2 -right-2 h-6 w-6"
+                    onClick={removeSelectedImage}
+                  >
+                    <X className="w-3 h-3" />
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {/* Input Area */}
             <div className="p-3 sm:p-4 border-t flex gap-2">
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleImageSelect}
+                accept="image/png,image/jpeg,image/jpg"
+                className="hidden"
+              />
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={sendMutation.isPending}
+              >
+                <ImagePlus className="w-4 h-4" />
+              </Button>
               <Input
                 placeholder={t("messages.typeMessage")}
                 value={messageInput}
@@ -362,7 +552,7 @@ export default function MessagesPage() {
               />
               <Button
                 onClick={handleSendMessage}
-                disabled={!messageInput.trim() || sendMutation.isPending}
+                disabled={(!messageInput.trim() && !selectedImage) || sendMutation.isPending}
                 size="icon"
                 data-testid="button-send"
               >
@@ -382,6 +572,30 @@ export default function MessagesPage() {
           </Card>
         )}
       </div>
+
+      {/* Remove Connection Confirmation Dialog */}
+      <Dialog open={removeDialogOpen} onOpenChange={setRemoveDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("messages.removeConnection")}</DialogTitle>
+            <DialogDescription>
+              {t("messages.removeConnectionConfirm")}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRemoveDialogOpen(false)}>
+              {t("common.cancel")}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => removeConnectionMutation.mutate()}
+              disabled={removeConnectionMutation.isPending}
+            >
+              {t("messages.removeConnection")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

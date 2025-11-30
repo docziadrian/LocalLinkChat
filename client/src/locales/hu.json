@@ -135,7 +135,12 @@
     "messageConnections": "Csak kapcsolódott felhasználóknak küldhetsz üzenetet",
     "today": "Ma",
     "yesterday": "Tegnap",
-    "newMessages": "Új üzenetek"
+    "newMessages": "Új üzenetek",
+    "removeConnection": "Kapcsolat eltávolítása",
+    "removeConnectionConfirm": "Biztosan el szeretnéd távolítani ezt a kapcsolatot? Többé nem fogtok tudni üzenni egymásnak.",
+    "connectionRemoved": "Kapcsolat eltávolítva",
+    "attachImage": "Kép csatolása",
+    "imageSent": "Kép"
   },
   "notifications": {
     "title": "Értesítések",
@@ -167,7 +172,11 @@
     "updateFailed": "Nem sikerült frissíteni a profilt",
     "userNotFound": "Felhasználó nem található",
     "profileNotExist": "Ez a profil nem létezik vagy eltávolításra került.",
-    "requestPending": "Kérés függőben"
+    "requestPending": "Kérés függőben",
+    "userPosts": "{{name}} bejegyzései",
+    "noPosts": "Még nincsenek bejegyzések",
+    "noPostsDescription": "Ez a felhasználó még nem osztott meg bejegyzést.",
+    "viewPost": "Bejegyzés megtekintése"
   },
   "chat": {
     "liveSupport": "Élő támogatás",
@@ -256,6 +265,14 @@
     "justNow": "Most",
     "minutesAgo": "{{count}} perce",
     "hoursAgo": "{{count}} órája",
-    "daysAgo": "{{count}} napja"
+    "daysAgo": "{{count}} napja",
+    "share": "Megosztás",
+    "sharePost": "Bejegyzés megosztása",
+    "shareWithConnections": "Megosztás a kapcsolataiddal",
+    "selectConnections": "Válaszd ki a kapcsolatokat a megosztáshoz",
+    "noConnectionsToShare": "Nincs kapcsolat a megosztáshoz",
+    "sendTo": "Küldés neki",
+    "postShared": "Bejegyzés sikeresen megosztva!",
+    "sharedPost": "Megosztott veled egy bejegyzést"
   }
 }

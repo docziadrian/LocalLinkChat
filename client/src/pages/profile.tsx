@@ -40,11 +40,14 @@ import {
   X,
   Camera,
   MessageSquare,
-  Loader2
+  Loader2,
+  FileText,
+  ArrowRight
 } from "lucide-react";
+import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { INTEREST_CATEGORIES, type User } from "@shared/schema";
+import { INTEREST_CATEGORIES, type User, type Post } from "@shared/schema";
 
 const profileFormSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
@@ -64,6 +67,21 @@ function getInitials(name: string) {
     .join("")
     .toUpperCase()
     .slice(0, 2);
+}
+
+function truncateContent(content: string, wordCount: number = 10): string {
+  const words = content.split(/\s+/);
+  if (words.length <= wordCount) return content;
+  return words.slice(0, wordCount).join(" ") + "...";
+}
+
+function formatPostDate(timestamp: string): string {
+  const date = new Date(timestamp);
+  return date.toLocaleDateString(undefined, { 
+    year: 'numeric', 
+    month: 'short', 
+    day: 'numeric' 
+  });
 }
 
 function ProfileSkeleton() {
@@ -116,6 +134,19 @@ export default function Profile() {
 
   const { data: connections } = useQuery<{ id: string; status: string; receiverId: string; requesterId: string }[]>({
     queryKey: ["/api/connections"],
+  });
+
+  // Fetch user's posts
+  const targetUserId = params?.id || currentUser?.id;
+  const { data: userPosts = [] } = useQuery<Array<Post & { user: User }>>({
+    queryKey: ["/api/users", targetUserId, "posts"],
+    queryFn: async () => {
+      if (!targetUserId) return [];
+      const res = await fetch(`/api/users/${targetUserId}/posts`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!targetUserId,
   });
 
   // For own profile, use currentUser; for others, use fetched profileUser
@@ -645,6 +676,75 @@ export default function Profile() {
           </CardContent>
         </Card>
       )}
+
+      {/* User Posts Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <FileText className="w-5 h-5 text-primary" />
+            {t("profile.userPosts", { name: displayUser.fullName || displayUser.name || "" })}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {userPosts.length === 0 ? (
+            <div className="text-center py-8">
+              <FileText className="w-12 h-12 mx-auto text-muted-foreground/50 mb-3" />
+              <p className="text-muted-foreground font-medium">{t("profile.noPosts")}</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                {t("profile.noPostsDescription")}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {userPosts.map((post) => (
+                <div 
+                  key={post.id} 
+                  className="flex gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors"
+                >
+                  <Avatar className="w-10 h-10 flex-shrink-0">
+                    <AvatarImage src={post.user.avatarUrl || undefined} />
+                    <AvatarFallback className="bg-primary/10 text-primary text-sm">
+                      {getInitials(post.user.fullName || post.user.name || "")}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <p className="font-medium text-sm">
+                        {post.user.fullName || post.user.name}
+                      </p>
+                      <span className="text-xs text-muted-foreground flex-shrink-0">
+                        {formatPostDate(post.createdAt)}
+                      </span>
+                    </div>
+                    <Link 
+                      href={`/posts?highlight=${post.id}`}
+                      className="group"
+                    >
+                      <p className="text-sm text-muted-foreground group-hover:text-primary transition-colors cursor-pointer">
+                        {truncateContent(post.content)}
+                        {post.content.split(/\s+/).length > 10 && (
+                          <span className="inline-flex items-center ml-1 text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+                            <ArrowRight className="w-3 h-3" />
+                          </span>
+                        )}
+                      </p>
+                    </Link>
+                    {post.imageUrl && (
+                      <div className="mt-2">
+                        <img 
+                          src={post.imageUrl} 
+                          alt="" 
+                          className="w-16 h-16 object-cover rounded-lg"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

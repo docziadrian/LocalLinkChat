@@ -117,3 +117,4 @@ export const languageFlags: Record<SupportedLanguage, string> = {
   de: "🇩🇪",
 };
 
+

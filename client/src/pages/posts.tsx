@@ -1,6 +1,6 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -44,9 +44,12 @@ import {
   Send,
   ChevronDown,
   ChevronUp,
+  Share2,
+  Check,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import type { User, Post, PostComment } from "@shared/schema";
+import type { User, Post, PostComment, Connection } from "@shared/schema";
 
 interface EnrichedPost extends Post {
   user: User;
@@ -135,11 +138,20 @@ function CommentItem({ comment, t }: { comment: EnrichedComment; t: (key: string
   );
 }
 
-function PostCard({ post, currentUser, t }: { post: EnrichedPost; currentUser: User | null; t: (key: string, vars?: Record<string, any>) => string }) {
+function PostCard({ post, currentUser, t, connections, isHighlighted, postRef }: { 
+  post: EnrichedPost; 
+  currentUser: User | null; 
+  t: (key: string, vars?: Record<string, any>) => string;
+  connections: (Connection & { otherUser: User })[];
+  isHighlighted?: boolean;
+  postRef?: React.RefObject<HTMLDivElement>;
+}) {
   const { toast } = useToast();
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [selectedConnections, setSelectedConnections] = useState<string[]>([]);
 
   // Fetch comments
   const { data: comments = [], isLoading: commentsLoading } = useQuery<EnrichedComment[]>({
@@ -205,9 +217,46 @@ function PostCard({ post, currentUser, t }: { post: EnrichedPost; currentUser: U
     },
   });
 
+  // Share post mutation
+  const shareMutation = useMutation({
+    mutationFn: async (connectionIds: string[]) => {
+      const postUrl = `${window.location.origin}/posts?highlight=${post.id}`;
+      const shareMessage = `${t("posts.sharedPost")}: "${post.content.slice(0, 50)}${post.content.length > 50 ? "..." : ""}"`;
+      
+      // Send message to each selected connection
+      await Promise.all(connectionIds.map(userId => 
+        apiRequest("POST", "/api/messages", {
+          receiverId: userId,
+          content: `${shareMessage}\n\n${postUrl}`,
+        })
+      ));
+    },
+    onSuccess: () => {
+      toast({ title: t("posts.postShared") });
+      setShareDialogOpen(false);
+      setSelectedConnections([]);
+    },
+    onError: () => {
+      toast({ title: t("errors.general"), variant: "destructive" });
+    },
+  });
+
   const handleReact = (type: "like" | "dislike") => {
     if (!currentUser) return;
     reactMutation.mutate(type);
+  };
+
+  const handleShare = () => {
+    if (selectedConnections.length === 0) return;
+    shareMutation.mutate(selectedConnections);
+  };
+
+  const toggleConnectionSelection = (userId: string) => {
+    setSelectedConnections(prev => 
+      prev.includes(userId) 
+        ? prev.filter(id => id !== userId)
+        : [...prev, userId]
+    );
   };
 
   const handleComment = () => {
@@ -219,7 +268,14 @@ function PostCard({ post, currentUser, t }: { post: EnrichedPost; currentUser: U
 
   return (
     <>
-      <Card className="mb-4 overflow-hidden">
+      <Card 
+        ref={postRef}
+        className={`mb-4 overflow-hidden transition-all duration-500 ${
+          isHighlighted 
+            ? "ring-2 ring-primary shadow-lg shadow-primary/20 animate-pulse" 
+            : ""
+        }`}
+      >
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
@@ -298,7 +354,7 @@ function PostCard({ post, currentUser, t }: { post: EnrichedPost; currentUser: U
           <Separator className="mb-3" />
 
           {/* Actions */}
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-1 sm:gap-2">
               <Button
                 variant={post.userReaction === "like" ? "default" : "ghost"}
@@ -321,20 +377,33 @@ function PostCard({ post, currentUser, t }: { post: EnrichedPost; currentUser: U
                 <span className="hidden sm:inline">{t("posts.dislike")}</span>
               </Button>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-1 sm:gap-2"
-              onClick={() => setShowComments(!showComments)}
-            >
-              <MessageCircle className="w-4 h-4" />
-              <span className="hidden sm:inline">{t("posts.comment")}</span>
-              {showComments ? (
-                <ChevronUp className="w-4 h-4 ml-1" />
-              ) : (
-                <ChevronDown className="w-4 h-4 ml-1" />
+            <div className="flex items-center gap-1 sm:gap-2">
+              {currentUser && connections.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-1 sm:gap-2"
+                  onClick={() => setShareDialogOpen(true)}
+                >
+                  <Share2 className="w-4 h-4" />
+                  <span className="hidden sm:inline">{t("posts.share")}</span>
+                </Button>
               )}
-            </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1 sm:gap-2"
+                onClick={() => setShowComments(!showComments)}
+              >
+                <MessageCircle className="w-4 h-4" />
+                <span className="hidden sm:inline">{t("posts.comment")}</span>
+                {showComments ? (
+                  <ChevronUp className="w-4 h-4 ml-1" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 ml-1" />
+                )}
+              </Button>
+            </div>
           </div>
 
           {/* Comments Section */}
@@ -419,6 +488,76 @@ function PostCard({ post, currentUser, t }: { post: EnrichedPost; currentUser: U
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Share dialog */}
+      <Dialog open={shareDialogOpen} onOpenChange={(open) => {
+        setShareDialogOpen(open);
+        if (!open) setSelectedConnections([]);
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("posts.sharePost")}</DialogTitle>
+            <DialogDescription>{t("posts.selectConnections")}</DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="max-h-[300px] pr-4">
+            {connections.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                {t("posts.noConnectionsToShare")}
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {connections.map((conn) => (
+                  <div
+                    key={conn.otherUser.id}
+                    className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
+                      selectedConnections.includes(conn.otherUser.id)
+                        ? "bg-primary/10"
+                        : "hover:bg-muted"
+                    }`}
+                    onClick={() => toggleConnectionSelection(conn.otherUser.id)}
+                  >
+                    <Checkbox
+                      checked={selectedConnections.includes(conn.otherUser.id)}
+                      onCheckedChange={() => toggleConnectionSelection(conn.otherUser.id)}
+                    />
+                    <Avatar className="w-10 h-10">
+                      <AvatarImage src={conn.otherUser.avatarUrl || undefined} />
+                      <AvatarFallback className="bg-primary/10 text-primary">
+                        {getInitials(conn.otherUser.fullName || conn.otherUser.name || "")}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">
+                        {conn.otherUser.fullName || conn.otherUser.name}
+                      </p>
+                      {conn.otherUser.jobPosition && (
+                        <p className="text-xs text-muted-foreground truncate">
+                          {conn.otherUser.jobPosition}
+                        </p>
+                      )}
+                    </div>
+                    {selectedConnections.includes(conn.otherUser.id) && (
+                      <Check className="w-5 h-5 text-primary" />
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShareDialogOpen(false)}>
+              {t("common.cancel")}
+            </Button>
+            <Button
+              onClick={handleShare}
+              disabled={selectedConnections.length === 0 || shareMutation.isPending}
+            >
+              <Send className="w-4 h-4 mr-2" />
+              {t("posts.sendTo")} ({selectedConnections.length})
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -428,12 +567,44 @@ export default function PostsPage() {
   const { user: currentUser } = useAuth();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const highlightedPostRef = useRef<HTMLDivElement>(null);
+  const searchString = useSearch();
   
   const [postContent, setPostContent] = useState("");
   const [postImage, setPostImage] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [sortBy, setSortBy] = useState<"newest" | "likes">("newest");
   const [filterBy, setFilterBy] = useState<"all" | "connections">("all");
+  const [highlightedPostId, setHighlightedPostId] = useState<string | null>(null);
+
+  // Parse highlight query parameter
+  useEffect(() => {
+    const params = new URLSearchParams(searchString);
+    const highlightId = params.get("highlight");
+    if (highlightId) {
+      setHighlightedPostId(highlightId);
+      // Remove highlight after 3 seconds
+      const timer = setTimeout(() => {
+        setHighlightedPostId(null);
+        // Clean URL
+        window.history.replaceState({}, "", "/posts");
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [searchString]);
+
+  // Scroll to highlighted post
+  useEffect(() => {
+    if (highlightedPostId && highlightedPostRef.current) {
+      highlightedPostRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [highlightedPostId]);
+
+  // Fetch connections for sharing
+  const { data: connections = [] } = useQuery<(Connection & { otherUser: User })[]>({
+    queryKey: ["/api/connections/accepted"],
+    enabled: !!currentUser,
+  });
 
   // Fetch posts
   const { data: posts = [], isLoading } = useQuery<EnrichedPost[]>({
@@ -667,6 +838,9 @@ export default function PostsPage() {
               post={post}
               currentUser={currentUser}
               t={t}
+              connections={connections}
+              isHighlighted={highlightedPostId === post.id}
+              postRef={highlightedPostId === post.id ? highlightedPostRef : undefined}
             />
           ))}
         </div>
@@ -674,4 +848,5 @@ export default function PostsPage() {
     </div>
   );
 }
+
 

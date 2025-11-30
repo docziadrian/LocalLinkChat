@@ -67,6 +67,7 @@ export interface IStorage {
   createConnection(connection: InsertConnection): Promise<Connection>;
   updateConnectionStatus(id: string, status: string): Promise<Connection | undefined>;
   getAcceptedConnectionsCount(userId: string): Promise<number>;
+  deleteConnection(id: string): Promise<void>;
   
   // Notifications
   getNotifications(userId: string): Promise<Notification[]>;
@@ -74,6 +75,7 @@ export interface IStorage {
   createNotification(notification: InsertNotification): Promise<Notification>;
   markNotificationRead(id: string): Promise<void>;
   markAllNotificationsRead(userId: string): Promise<void>;
+  deleteNotificationByConnectionId(connectionId: string): Promise<void>;
   
   // Chat messages
   getChatMessages(): Promise<ChatMessage[]>;
@@ -90,6 +92,7 @@ export interface IStorage {
   }>>;
   createDirectMessage(message: InsertDirectMessage): Promise<DirectMessage>;
   markDirectMessageAsRead(messageId: string): Promise<DirectMessage | undefined>;
+  markMessagesFromUserAsRead(receiverId: string, senderId: string): Promise<void>;
   getDirectMessageCount(userId: string): Promise<number>;
   getUnreadDirectMessageCount(userId: string): Promise<number>;
   
@@ -100,6 +103,7 @@ export interface IStorage {
   // Posts
   getPosts(options?: { sortBy?: 'newest' | 'likes'; connectionIds?: string[] }): Promise<Array<Post & { user: User; likesCount: number; dislikesCount: number; commentsCount: number; userReaction?: 'like' | 'dislike' | null }>>;
   getPost(id: string): Promise<Post | undefined>;
+  getPostsByUserId(userId: string): Promise<Array<Post & { user: User }>>;
   createPost(post: InsertPost): Promise<Post>;
   deletePost(id: string): Promise<void>;
   
@@ -273,6 +277,12 @@ export class SQLiteStorage implements IStorage {
     return userConnections.filter(c => c.status === "accepted").length;
   }
 
+  async deleteConnection(id: string): Promise<void> {
+    // Also delete related notifications
+    await db.delete(notifications).where(eq(notifications.connectionId, id));
+    await db.delete(connections).where(eq(connections.id, id));
+  }
+
   // Notifications
   async getNotifications(userId: string): Promise<Notification[]> {
     return db.select().from(notifications)
@@ -302,6 +312,15 @@ export class SQLiteStorage implements IStorage {
 
   async markAllNotificationsRead(userId: string): Promise<void> {
     await db.update(notifications).set({ read: true }).where(eq(notifications.userId, userId));
+  }
+
+  async deleteNotificationByConnectionId(connectionId: string): Promise<void> {
+    await db.delete(notifications).where(
+      and(
+        eq(notifications.connectionId, connectionId),
+        eq(notifications.type, "connection_request")
+      )
+    );
   }
 
   // Chat messages
@@ -384,6 +403,16 @@ export class SQLiteStorage implements IStorage {
     return result[0];
   }
 
+  async markMessagesFromUserAsRead(receiverId: string, senderId: string): Promise<void> {
+    await db.update(directMessages)
+      .set({ isRead: true })
+      .where(and(
+        eq(directMessages.receiverId, receiverId),
+        eq(directMessages.senderId, senderId),
+        eq(directMessages.isRead, false)
+      ));
+  }
+
   async getDirectMessageCount(userId: string): Promise<number> {
     const result = await db.select({ count: sql<number>`count(*)` })
       .from(directMessages)
@@ -456,6 +485,21 @@ export class SQLiteStorage implements IStorage {
   async getPost(id: string): Promise<Post | undefined> {
     const result = await db.select().from(posts).where(eq(posts.id, id)).limit(1);
     return result[0];
+  }
+
+  async getPostsByUserId(userId: string): Promise<Array<Post & { user: User }>> {
+    const userPosts = await db.select()
+      .from(posts)
+      .where(eq(posts.userId, userId))
+      .orderBy(desc(posts.createdAt));
+    
+    const user = await this.getUser(userId);
+    if (!user) return [];
+    
+    return userPosts.map(post => ({
+      ...post,
+      user,
+    }));
   }
 
   async createPost(insertPost: InsertPost): Promise<Post> {

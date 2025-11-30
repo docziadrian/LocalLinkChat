@@ -135,7 +135,12 @@
     "messageConnections": "You can only message users you are connected with",
     "today": "Today",
     "yesterday": "Yesterday",
-    "newMessages": "New messages"
+    "newMessages": "New messages",
+    "removeConnection": "Remove Connection",
+    "removeConnectionConfirm": "Are you sure you want to remove this connection? You will no longer be able to message each other.",
+    "connectionRemoved": "Connection removed",
+    "attachImage": "Attach image",
+    "imageSent": "Image"
   },
   "notifications": {
     "title": "Notifications",
@@ -167,7 +172,11 @@
     "updateFailed": "Failed to update profile",
     "userNotFound": "User not found",
     "profileNotExist": "This profile doesn't exist or has been removed.",
-    "requestPending": "Request Pending"
+    "requestPending": "Request Pending",
+    "userPosts": "Posts by {{name}}",
+    "noPosts": "No posts yet",
+    "noPostsDescription": "This user hasn't shared any posts yet.",
+    "viewPost": "View post"
   },
   "chat": {
     "liveSupport": "Live Support",
@@ -256,6 +265,14 @@
     "justNow": "Just now",
     "minutesAgo": "{{count}}m ago",
     "hoursAgo": "{{count}}h ago",
-    "daysAgo": "{{count}}d ago"
+    "daysAgo": "{{count}}d ago",
+    "share": "Share",
+    "sharePost": "Share Post",
+    "shareWithConnections": "Share with your connections",
+    "selectConnections": "Select connections to share with",
+    "noConnectionsToShare": "No connections to share with",
+    "sendTo": "Send to",
+    "postShared": "Post shared successfully!",
+    "sharedPost": "Shared a post with you"
   }
 }

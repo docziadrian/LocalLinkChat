@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useI18n } from "@/lib/i18n";
@@ -11,7 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Bell, Check, X, Users, UserPlus, CheckCircle } from "lucide-react";
+import { Bell, Check, X, Users, UserPlus, CheckCircle, Loader2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import type { User, Notification } from "@shared/schema";
 
@@ -49,45 +49,66 @@ export default function NotificationsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [, navigate] = useLocation();
+  const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
+  // Track connection IDs that have been handled (accepted/declined)
+  const [handledConnectionIds, setHandledConnectionIds] = useState<Set<string>>(new Set());
 
   const { data: notifications = [], isLoading } = useQuery<NotificationWithUser[]>({
     queryKey: ["/api/notifications"],
   });
 
-  // Auto-mark non-connection-request notifications as read when page opens
+  // Auto-mark all notifications as read when page opens
   useEffect(() => {
-    const hasUnread = notifications.some(n => !n.read && n.type !== "connection_request");
-    if (hasUnread && notifications.length > 0) {
-      // Mark all read after a short delay to let the user see they had new notifications
+    if (notifications.length > 0) {
       const timer = setTimeout(async () => {
         try {
           await apiRequest("POST", "/api/notifications/read-all", {});
-          queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
           queryClient.invalidateQueries({ queryKey: ["/api/notifications/unread-count"] });
         } catch (error) {
           console.error("Failed to mark notifications as read:", error);
         }
-      }, 2000);
+      }, 1000);
       return () => clearTimeout(timer);
     }
-  }, [notifications]);
+  }, [notifications.length]);
 
   const acceptMutation = useMutation({
-    mutationFn: async (connectionId: string) => {
+    mutationFn: async ({ connectionId, notificationId }: { connectionId: string; notificationId: string }) => {
+      // Mark notification as read first
+      await apiRequest("PATCH", `/api/notifications/${notificationId}/read`, {});
       return apiRequest("PATCH", `/api/connections/${connectionId}`, { status: "accepted" });
     },
-    onSuccess: () => {
+    onMutate: ({ connectionId }) => {
+      setProcessingIds(prev => new Set([...Array.from(prev), connectionId]));
+    },
+    onSuccess: (_, { connectionId }) => {
+      // Immediately mark as handled so it disappears from UI
+      setHandledConnectionIds(prev => new Set([...Array.from(prev), connectionId]));
+      setProcessingIds(prev => {
+        const next = new Set(prev);
+        next.delete(connectionId);
+        return next;
+      });
+      
+      // Invalidate queries in background
       queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notifications/unread-count"] });
       queryClient.invalidateQueries({ queryKey: ["/api/connections"] });
       queryClient.invalidateQueries({ queryKey: ["/api/connections/accepted"] });
+      
       toast({
         title: "Connection accepted!",
         description: "You can now message each other.",
       });
-      // Redirect to messages page
+      
       navigate("/messages");
     },
-    onError: () => {
+    onError: (_, { connectionId }) => {
+      setProcessingIds(prev => {
+        const next = new Set(prev);
+        next.delete(connectionId);
+        return next;
+      });
       toast({
         title: "Failed to accept connection",
         variant: "destructive",
@@ -96,17 +117,37 @@ export default function NotificationsPage() {
   });
 
   const declineMutation = useMutation({
-    mutationFn: async (connectionId: string) => {
+    mutationFn: async ({ connectionId, notificationId }: { connectionId: string; notificationId: string }) => {
+      // Mark notification as read first
+      await apiRequest("PATCH", `/api/notifications/${notificationId}/read`, {});
       return apiRequest("PATCH", `/api/connections/${connectionId}`, { status: "declined" });
     },
-    onSuccess: () => {
+    onMutate: ({ connectionId }) => {
+      setProcessingIds(prev => new Set([...Array.from(prev), connectionId]));
+    },
+    onSuccess: (_, { connectionId }) => {
+      // Immediately mark as handled so it disappears from UI
+      setHandledConnectionIds(prev => new Set([...Array.from(prev), connectionId]));
+      setProcessingIds(prev => {
+        const next = new Set(prev);
+        next.delete(connectionId);
+        return next;
+      });
+      
       queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notifications/unread-count"] });
       queryClient.invalidateQueries({ queryKey: ["/api/connections"] });
+      
       toast({
         title: "Connection declined",
       });
     },
-    onError: () => {
+    onError: (_, { connectionId }) => {
+      setProcessingIds(prev => {
+        const next = new Set(prev);
+        next.delete(connectionId);
+        return next;
+      });
       toast({
         title: "Failed to decline connection",
         variant: "destructive",
@@ -124,13 +165,21 @@ export default function NotificationsPage() {
     },
   });
 
+  // Filter out connection requests that are being processed or already handled
   const pendingNotifications = notifications.filter(
-    (n) => n.type === "connection_request" && !n.read
+    (n) => n.type === "connection_request" && 
+           n.connectionId && 
+           !processingIds.has(n.connectionId) &&
+           !handledConnectionIds.has(n.connectionId)
   );
 
   const otherNotifications = notifications.filter(
-    (n) => n.type !== "connection_request" || n.read
+    (n) => n.type !== "connection_request"
   );
+
+  const isProcessing = (connectionId: string | null) => {
+    return connectionId ? processingIds.has(connectionId) : false;
+  };
 
   if (isLoading) {
     return (
@@ -166,7 +215,7 @@ export default function NotificationsPage() {
         )}
       </div>
 
-      {notifications.length === 0 ? (
+      {pendingNotifications.length === 0 && otherNotifications.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center">
             <Bell className="w-16 h-16 mx-auto text-muted-foreground/50 mb-4" />
@@ -189,83 +238,102 @@ export default function NotificationsPage() {
               </CardHeader>
               <CardContent className="p-0">
                 <ScrollArea className="max-h-[500px]">
-                  {pendingNotifications.map((notification) => (
-                    <div
-                      key={notification.id}
-                      className="flex gap-4 p-4 border-b last:border-b-0 hover:bg-muted/50"
-                    >
-                      <Avatar className="w-14 h-14 border-2 border-background">
-                        <AvatarImage src={notification.fromUser?.avatarUrl || undefined} />
-                        <AvatarFallback className="bg-primary/10 text-primary font-semibold">
-                          {notification.fromUser?.name
-                            ? getInitials(notification.fromUser.name)
-                            : "?"}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <p className="font-semibold text-foreground">
-                              {notification.fromUser?.fullName || notification.fromUser?.name}
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                              {notification.fromUser?.jobPosition}
-                            </p>
+                  {pendingNotifications.map((notification) => {
+                    const processing = isProcessing(notification.connectionId);
+                    return (
+                      <div
+                        key={notification.id}
+                        className={`flex gap-4 p-4 border-b last:border-b-0 hover:bg-muted/50 ${
+                          processing ? "opacity-50" : ""
+                        }`}
+                      >
+                        <Avatar className="w-14 h-14 border-2 border-background">
+                          <AvatarImage src={notification.fromUser?.avatarUrl || undefined} />
+                          <AvatarFallback className="bg-primary/10 text-primary font-semibold">
+                            {notification.fromUser?.name
+                              ? getInitials(notification.fromUser.name)
+                              : "?"}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="font-semibold text-foreground">
+                                {notification.fromUser?.fullName || notification.fromUser?.name}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                {notification.fromUser?.jobPosition}
+                              </p>
+                            </div>
+                            <span className="text-xs text-muted-foreground whitespace-nowrap">
+                              {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}
+                            </span>
                           </div>
-                          <span className="text-xs text-muted-foreground whitespace-nowrap">
-                            {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}
-                          </span>
-                        </div>
-                        
-                        {notification.fromUser?.bio && (
-                          <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-                            {notification.fromUser.bio}
-                          </p>
-                        )}
-
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          {notification.fromUser?.interests?.slice(0, 4).map((interest) => (
-                            <Badge key={interest} variant="outline" className="text-xs">
-                              {interest}
-                            </Badge>
-                          ))}
-                          {(notification.fromUser?.interests?.length || 0) > 4 && (
-                            <Badge variant="outline" className="text-xs">
-                              +{(notification.fromUser?.interests?.length || 0) - 4}
-                            </Badge>
+                          
+                          {notification.fromUser?.bio && (
+                            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                              {notification.fromUser.bio}
+                            </p>
                           )}
-                        </div>
 
-                        <div className="flex items-center gap-4 mt-3">
-                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                            <Users className="w-4 h-4" />
-                            {t("notifications.connectionsCount", {
-                              count: notification.fromUser?.connectionsCount || 0,
-                            })}
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {notification.fromUser?.interests?.slice(0, 4).map((interest) => (
+                              <Badge key={interest} variant="outline" className="text-xs">
+                                {interest}
+                              </Badge>
+                            ))}
+                            {(notification.fromUser?.interests?.length || 0) > 4 && (
+                              <Badge variant="outline" className="text-xs">
+                                +{(notification.fromUser?.interests?.length || 0) - 4}
+                              </Badge>
+                            )}
                           </div>
-                          <div className="flex gap-2 ml-auto">
-                            <Button
-                              size="sm"
-                              onClick={() => notification.connectionId && acceptMutation.mutate(notification.connectionId)}
-                              disabled={acceptMutation.isPending}
-                            >
-                              <Check className="w-4 h-4 mr-1" />
-                              {t("common.accept")}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => notification.connectionId && declineMutation.mutate(notification.connectionId)}
-                              disabled={declineMutation.isPending}
-                            >
-                              <X className="w-4 h-4 mr-1" />
-                              {t("common.decline")}
-                            </Button>
+
+                          <div className="flex items-center gap-4 mt-3">
+                            <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                              <Users className="w-4 h-4" />
+                              {t("notifications.connectionsCount", {
+                                count: notification.fromUser?.connectionsCount || 0,
+                              })}
+                            </div>
+                            <div className="flex gap-2 ml-auto">
+                              <Button
+                                size="sm"
+                                onClick={() => notification.connectionId && acceptMutation.mutate({
+                                  connectionId: notification.connectionId,
+                                  notificationId: notification.id
+                                })}
+                                disabled={processing || acceptMutation.isPending || declineMutation.isPending}
+                              >
+                                {processing ? (
+                                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                                ) : (
+                                  <Check className="w-4 h-4 mr-1" />
+                                )}
+                                {t("common.accept")}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => notification.connectionId && declineMutation.mutate({
+                                  connectionId: notification.connectionId,
+                                  notificationId: notification.id
+                                })}
+                                disabled={processing || acceptMutation.isPending || declineMutation.isPending}
+                              >
+                                {processing ? (
+                                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                                ) : (
+                                  <X className="w-4 h-4 mr-1" />
+                                )}
+                                {t("common.decline")}
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </ScrollArea>
               </CardContent>
             </Card>
