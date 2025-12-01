@@ -75,33 +75,51 @@ export default function LoginPage() {
 
   // Initialize Google Sign-In
   useEffect(() => {
-    const script = document.createElement("script");
-    script.src = "https://accounts.google.com/gsi/client";
-    script.async = true;
-    script.defer = true;
-    document.body.appendChild(script);
-
-    script.onload = () => {
-      if (window.google) {
-        window.google.accounts.id.initialize({
-          client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID || "",
-          callback: handleGoogleResponse,
-        });
-        
-        const buttonDiv = document.getElementById("google-signin-button");
-        if (buttonDiv) {
-          window.google.accounts.id.renderButton(buttonDiv, {
-            theme: "outline",
-            size: "large",
-            width: "100%",
-            text: "continue_with",
-          });
+    let scriptElement: HTMLScriptElement | null = null;
+    
+    // Fetch Google Client ID from server at runtime
+    fetch("/api/config")
+      .then((res) => res.json())
+      .then((config) => {
+        if (!config.googleClientId) {
+          console.warn("Google Client ID not configured");
+          return;
         }
-      }
-    };
+
+        const script = document.createElement("script");
+        script.src = "https://accounts.google.com/gsi/client";
+        script.async = true;
+        script.defer = true;
+        document.body.appendChild(script);
+        scriptElement = script;
+
+        script.onload = () => {
+          if (window.google) {
+            window.google.accounts.id.initialize({
+              client_id: config.googleClientId,
+              callback: handleGoogleResponse,
+            });
+            
+            const buttonDiv = document.getElementById("google-signin-button");
+            if (buttonDiv) {
+              window.google.accounts.id.renderButton(buttonDiv, {
+                theme: "outline",
+                size: "large",
+                width: "100%",
+                text: "continue_with",
+              });
+            }
+          }
+        };
+      })
+      .catch((err) => {
+        console.error("Failed to fetch config:", err);
+      });
 
     return () => {
-      document.body.removeChild(script);
+      if (scriptElement && document.body.contains(scriptElement)) {
+        document.body.removeChild(scriptElement);
+      }
     };
   }, []);
 
