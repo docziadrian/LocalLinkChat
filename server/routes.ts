@@ -21,6 +21,13 @@ export async function registerRoutes(
   
   // Auth routes
   app.use("/api/auth", authRouter);
+
+  // Public config endpoint (for runtime environment variables)
+  app.get("/api/config", (_req: Request, res: Response) => {
+    res.json({
+      googleClientId: process.env.VITE_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || "",
+    });
+  });
   
   // Upload routes
   app.use("/api/upload", uploadRouter);
