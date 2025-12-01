@@ -48,7 +48,11 @@ export async function getCurrentUser(req: Request): Promise<any | null> {
 }
 
 // Auth middleware
-export async function requireAuth(req: Request, res: Response, next: NextFunction) {
+export async function requireAuth(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
   const user = await getCurrentUser(req);
   if (!user) {
     return res.status(401).json({ error: "Unauthorized" });
@@ -58,10 +62,16 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 }
 
 // Check if user has completed profile
-export async function requireProfileComplete(req: Request, res: Response, next: NextFunction) {
+export async function requireProfileComplete(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
   const user = (req as any).user;
   if (!user.profileCompleted) {
-    return res.status(403).json({ error: "Profile not completed", code: "PROFILE_INCOMPLETE" });
+    return res
+      .status(403)
+      .json({ error: "Profile not completed", code: "PROFILE_INCOMPLETE" });
   }
   next();
 }
@@ -70,7 +80,7 @@ export async function requireProfileComplete(req: Request, res: Response, next: 
 router.post("/magic-link", async (req: Request, res: Response) => {
   try {
     const { email } = req.body;
-    
+
     if (!email || typeof email !== "string") {
       return res.status(400).json({ error: "Email is required" });
     }
@@ -90,13 +100,17 @@ router.post("/magic-link", async (req: Request, res: Response) => {
     });
 
     // Build the magic link URL
-    const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
-    const magicLink = `${baseUrl}/api/auth/verify?token=${token}&email=${encodeURIComponent(normalizedEmail)}`;
+    const baseUrl =
+      process.env.BASE_URL || `https://local-link-chat.vercel.app/`;
+    const magicLink = `${baseUrl}/api/auth/verify?token=${token}&email=${encodeURIComponent(
+      normalizedEmail
+    )}`;
 
     // Send email (or log for development)
     if (process.env.SMTP_USER) {
       await transporter.sendMail({
-        from: process.env.SMTP_FROM || "LocalLinkChat <noreply@locallinkchat.com>",
+        from:
+          process.env.SMTP_FROM || "LocalLinkChat <noreply@locallinkchat.com>",
         to: normalizedEmail,
         subject: "Sign in to LocalLinkChat",
         html: `
@@ -129,8 +143,13 @@ router.post("/magic-link", async (req: Request, res: Response) => {
 router.get("/verify", async (req: Request, res: Response) => {
   try {
     const { token, email } = req.query;
-    
-    if (!token || !email || typeof token !== "string" || typeof email !== "string") {
+
+    if (
+      !token ||
+      !email ||
+      typeof token !== "string" ||
+      typeof email !== "string"
+    ) {
       return res.redirect("/?error=invalid_link");
     }
 
@@ -154,7 +173,7 @@ router.get("/verify", async (req: Request, res: Response) => {
 
     // Find or create user
     let user = await storage.getUserByEmail(email.toLowerCase());
-    
+
     if (!user) {
       // Create new user
       user = await storage.createUser({
@@ -176,7 +195,7 @@ router.get("/verify", async (req: Request, res: Response) => {
 
     // Create session
     const expiresAt = new Date(Date.now() + SESSION_DURATION_MS).toISOString();
-    
+
     const session = await storage.createSession({
       userId: user.id,
       expiresAt,
@@ -219,7 +238,7 @@ router.post("/google", async (req: Request, res: Response) => {
     }
 
     const payload = JSON.parse(Buffer.from(parts[1], "base64").toString());
-    
+
     const { sub: googleId, email, name, picture } = payload;
 
     if (!email) {
@@ -228,10 +247,10 @@ router.post("/google", async (req: Request, res: Response) => {
 
     // Find user by Google ID or email
     let user = await storage.getUserByGoogleId(googleId);
-    
+
     if (!user) {
       user = await storage.getUserByEmail(email.toLowerCase());
-      
+
       if (user) {
         // Link Google account to existing user
         await storage.updateUser(user.id, {
@@ -266,7 +285,7 @@ router.post("/google", async (req: Request, res: Response) => {
 
     // Create session
     const expiresAt = new Date(Date.now() + SESSION_DURATION_MS).toISOString();
-    
+
     const session = await storage.createSession({
       userId: user!.id,
       expiresAt,
@@ -281,10 +300,10 @@ router.post("/google", async (req: Request, res: Response) => {
       maxAge: SESSION_DURATION_MS,
     });
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       user: user,
-      profileCompleted: user!.profileCompleted 
+      profileCompleted: user!.profileCompleted,
     });
   } catch (error) {
     console.error("Google auth error:", error);
@@ -316,7 +335,7 @@ router.post("/logout", async (req: Request, res: Response) => {
       }
       await storage.deleteSession(sessionId);
     }
-    
+
     res.clearCookie(SESSION_COOKIE);
     res.json({ success: true });
   } catch (error) {
@@ -328,11 +347,19 @@ router.post("/logout", async (req: Request, res: Response) => {
 router.post("/setup", requireAuth, async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
-    const { fullName, jobPosition, bio, seekingDescription, interests, preferredLanguage } = req.body;
+    const {
+      fullName,
+      jobPosition,
+      bio,
+      seekingDescription,
+      interests,
+      preferredLanguage,
+    } = req.body;
 
     if (!fullName || !jobPosition || !interests || interests.length === 0) {
-      return res.status(400).json({ 
-        error: "Full name, job position, and at least one interest are required" 
+      return res.status(400).json({
+        error:
+          "Full name, job position, and at least one interest are required",
       });
     }
 
@@ -364,4 +391,3 @@ router.post("/setup", requireAuth, async (req: Request, res: Response) => {
 });
 
 export default router;
-
