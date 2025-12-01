@@ -100,9 +100,10 @@ router.post("/magic-link", async (req: Request, res: Response) => {
     });
 
     // Build the magic link URL
-    const baseUrl =
-      process.env.BASE_URL || `http://47.237.213.249:3000/`;
-    const magicLink = `${baseUrl}/api/auth/verify?token=${token}&email=${encodeURIComponent(
+    const baseUrl = process.env.BASE_URL || `http://47.237.213.249/`;
+    const magicLink = `${baseUrl}:${
+      process.env.PORT
+    }/api/auth/verify?token=${token}&email=${encodeURIComponent(
       normalizedEmail
     )}`;
 
