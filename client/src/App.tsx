@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import HomePage from "@/pages/home";
 import PostsPage from "@/pages/posts";
+import RealsPage from "@/pages/reals";
 import DiscoverPage from "@/pages/discover";
 import MessagesPage from "@/pages/messages";
 import NotificationsPage from "@/pages/notifications";
@@ -318,8 +319,11 @@ function AppContent() {
               <Switch>
                 <Route path="/" component={HomePage} />
                 <Route path="/posts" component={PostsPage} />
+                <Route path="/reals" component={RealsPage} />
                 <Route path="/discover" component={DiscoverPage} />
-                <Route path="/messages" component={MessagesPage} />
+                <Route path="/messages">
+                  <MessagesPage wsRef={wsRef} />
+                </Route>
                 <Route path="/notifications" component={NotificationsPage} />
                 <Route path="/profile" component={ProfilePage} />
                 <Route path="/profile/:id" component={ProfilePage} />

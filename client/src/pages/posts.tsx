@@ -46,10 +46,13 @@ import {
   ChevronUp,
   Share2,
   Check,
+  Video,
+  Play,
+  ArrowRight,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import type { User, Post, PostComment, Connection } from "@shared/schema";
+import type { User, Post, PostComment, Connection, Short } from "@shared/schema";
 
 interface EnrichedPost extends Post {
   user: User;
@@ -606,6 +609,18 @@ export default function PostsPage() {
     enabled: !!currentUser,
   });
 
+  // Fetch random shorts for the REALS promo section
+  const { data: randomShorts = [] } = useQuery<(Short & { user: User })[]>({
+    queryKey: ["/api/shorts", "random"],
+    queryFn: async () => {
+      const res = await fetch("/api/shorts?limit=4&random=true", {
+        credentials: "include",
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
   // Fetch posts
   const { data: posts = [], isLoading } = useQuery<EnrichedPost[]>({
     queryKey: ["/api/posts", sortBy, filterBy],
@@ -814,6 +829,63 @@ export default function PostsPage() {
           </DropdownMenu>
         </div>
       </div>
+
+      {/* REALS Promo Section */}
+      {randomShorts.length > 0 && (
+        <Card className="mb-6 overflow-hidden bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+              <div>
+                <h3 className="text-lg font-bold flex items-center gap-2">
+                  <Video className="w-5 h-5 text-primary" />
+                  {t("reals.promoTitle")}
+                </h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {t("reals.promoDescription")}
+                </p>
+              </div>
+              <Link href="/reals">
+                <Button variant="default" className="gap-2 whitespace-nowrap">
+                  {t("reals.promoButton")}
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
+              </Link>
+            </div>
+            
+            {/* Random Shorts Grid - 3 on mobile, 4 on desktop */}
+            <div className="grid grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
+              {randomShorts.slice(0, 4).map((short, index) => (
+                <Link key={short.id} href={`/reals?id=${short.id}`} className={index === 3 ? "hidden lg:block" : ""}>
+                  <div className="group relative aspect-[9/16] rounded-lg overflow-hidden bg-black cursor-pointer">
+                    {short.thumbnailUrl ? (
+                      <img
+                        src={short.thumbnailUrl}
+                        alt={short.title || ""}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <video
+                        src={short.videoUrl}
+                        className="w-full h-full object-cover"
+                        muted
+                        playsInline
+                      />
+                    )}
+                    <div className="absolute inset-0 bg-black/30 group-hover:bg-black/50 transition-colors flex items-center justify-center">
+                      <Play className="w-8 h-8 sm:w-10 sm:h-10 text-white opacity-80 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                    <div className="absolute bottom-1 left-1 right-1">
+                      <p className="text-[10px] sm:text-xs text-white truncate font-medium drop-shadow-lg">
+                        {short.user.fullName || short.user.name}
+                      </p>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Posts Feed */}
       {isLoading ? (

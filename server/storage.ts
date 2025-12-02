@@ -7,9 +7,17 @@ import {
   notifications,
   chatMessages, 
   directMessages,
+  messageReactions,
+  messageReadReceipts,
   posts,
   postLikes,
   postComments,
+  shorts,
+  shortLikes,
+  shortComments,
+  groups,
+  groupMembers,
+  groupMessages,
   type User, 
   type InsertUser,
   type MagicLinkToken,
@@ -24,12 +32,28 @@ import {
   type InsertChatMessage,
   type DirectMessage,
   type InsertDirectMessage,
+  type MessageReaction,
+  type InsertMessageReaction,
+  type MessageReadReceipt,
+  type InsertMessageReadReceipt,
   type Post,
   type InsertPost,
   type PostLike,
   type InsertPostLike,
   type PostComment,
   type InsertPostComment,
+  type Short,
+  type InsertShort,
+  type ShortLike,
+  type InsertShortLike,
+  type ShortComment,
+  type InsertShortComment,
+  type Group,
+  type InsertGroup,
+  type GroupMember,
+  type InsertGroupMember,
+  type GroupMessage,
+  type InsertGroupMessage,
   type ActivityItem
 } from "@shared/schema";
 import { eq, and, or, desc, sql, inArray } from "drizzle-orm";
@@ -83,6 +107,7 @@ export interface IStorage {
   
   // Direct messages
   getDirectMessages(userId: string, otherUserId: string): Promise<DirectMessage[]>;
+  getDirectMessage(messageId: string): Promise<DirectMessage | undefined>;
   getDirectMessageConversations(userId: string): Promise<Array<{ 
     oderId: string; 
     otherUser: User;
@@ -91,6 +116,7 @@ export interface IStorage {
     unreadCount: number 
   }>>;
   createDirectMessage(message: InsertDirectMessage): Promise<DirectMessage>;
+  deleteDirectMessage(messageId: string): Promise<void>;
   markDirectMessageAsRead(messageId: string): Promise<DirectMessage | undefined>;
   markMessagesFromUserAsRead(receiverId: string, senderId: string): Promise<void>;
   getDirectMessageCount(userId: string): Promise<number>;
@@ -118,6 +144,56 @@ export interface IStorage {
   getPostComments(postId: string): Promise<Array<PostComment & { user: User }>>;
   createPostComment(comment: InsertPostComment): Promise<PostComment>;
   deletePostComment(id: string): Promise<void>;
+
+  // Shorts
+  getShorts(options?: { limit?: number; random?: boolean }): Promise<Array<Short & { user: User }>>;
+  getShort(id: string): Promise<Short | undefined>;
+  getShortsByUserId(userId: string): Promise<Array<Short & { user: User }>>;
+  createShort(short: InsertShort): Promise<Short>;
+  deleteShort(id: string): Promise<void>;
+  incrementShortViewCount(id: string): Promise<void>;
+  
+  // Short likes
+  getShortLike(shortId: string, userId: string): Promise<ShortLike | undefined>;
+  createShortLike(like: InsertShortLike): Promise<ShortLike>;
+  updateShortLike(id: string, type: 'like' | 'dislike'): Promise<ShortLike | undefined>;
+  deleteShortLike(shortId: string, userId: string): Promise<void>;
+  getShortLikesCount(shortId: string): Promise<{ likes: number; dislikes: number }>;
+  
+  // Short comments
+  getShortComments(shortId: string): Promise<Array<ShortComment & { user: User }>>;
+  createShortComment(comment: InsertShortComment): Promise<ShortComment>;
+  deleteShortComment(id: string): Promise<void>;
+  
+  // Groups
+  getGroup(id: string): Promise<Group | undefined>;
+  getGroupsByUser(userId: string): Promise<Array<Group & { memberCount: number }>>;
+  createGroup(group: InsertGroup): Promise<Group>;
+  deleteGroup(id: string): Promise<void>;
+  
+  // Group members
+  getGroupMember(groupId: string, userId: string): Promise<GroupMember | undefined>;
+  getGroupMembers(groupId: string): Promise<Array<GroupMember & { user: User }>>;
+  getGroupInvitations(userId: string): Promise<Array<GroupMember & { group: Group; invitedBy: User | null }>>;
+  createGroupMember(member: InsertGroupMember): Promise<GroupMember>;
+  updateGroupMemberStatus(id: string, status: string, joinedAt?: string): Promise<GroupMember | undefined>;
+  deleteGroupMember(groupId: string, userId: string): Promise<void>;
+  
+  // Group messages
+  getGroupMessages(groupId: string): Promise<Array<GroupMessage & { sender: User }>>;
+  createGroupMessage(message: InsertGroupMessage): Promise<GroupMessage>;
+  
+  // Message reactions
+  getMessageReactions(messageId: string, messageType: 'direct' | 'group'): Promise<Array<MessageReaction & { user: User }>>;
+  getMessageReaction(messageId: string, messageType: 'direct' | 'group', userId: string): Promise<MessageReaction | undefined>;
+  createMessageReaction(reaction: InsertMessageReaction): Promise<MessageReaction>;
+  deleteMessageReaction(messageId: string, messageType: 'direct' | 'group', userId: string): Promise<void>;
+  
+  // Message read receipts
+  getMessageReadReceipts(messageId: string, messageType: 'direct' | 'group'): Promise<Array<MessageReadReceipt & { user: User }>>;
+  getMessageReadReceipt(messageId: string, messageType: 'direct' | 'group', userId: string): Promise<MessageReadReceipt | undefined>;
+  createMessageReadReceipt(receipt: InsertMessageReadReceipt): Promise<MessageReadReceipt>;
+  markMessagesAsReadByUser(userId: string, messageIds: string[], messageType: 'direct' | 'group'): Promise<void>;
 }
 
 export class SQLiteStorage implements IStorage {
@@ -345,6 +421,11 @@ export class SQLiteStorage implements IStorage {
       .orderBy(directMessages.timestamp);
   }
 
+  async getDirectMessage(messageId: string): Promise<DirectMessage | undefined> {
+    const result = await db.select().from(directMessages).where(eq(directMessages.id, messageId)).limit(1);
+    return result[0];
+  }
+
   async getDirectMessageConversations(userId: string): Promise<Array<{ 
     oderId: string; 
     otherUser: User;
@@ -395,6 +476,10 @@ export class SQLiteStorage implements IStorage {
     const message = { ...insertMessage, id };
     await db.insert(directMessages).values(message);
     return message as DirectMessage;
+  }
+
+  async deleteDirectMessage(messageId: string): Promise<void> {
+    await db.delete(directMessages).where(eq(directMessages.id, messageId));
   }
 
   async markDirectMessageAsRead(messageId: string): Promise<DirectMessage | undefined> {
@@ -570,6 +655,328 @@ export class SQLiteStorage implements IStorage {
 
   async deletePostComment(id: string): Promise<void> {
     await db.delete(postComments).where(eq(postComments.id, id));
+  }
+
+  // Shorts
+  async getShorts(options?: { limit?: number; random?: boolean }): Promise<Array<Short & { user: User }>> {
+    let allShorts = await db.select().from(shorts).orderBy(desc(shorts.createdAt));
+    
+    // Shuffle if random is requested
+    if (options?.random) {
+      allShorts = allShorts.sort(() => Math.random() - 0.5);
+    }
+    
+    // Apply limit
+    if (options?.limit) {
+      allShorts = allShorts.slice(0, options.limit);
+    }
+    
+    return Promise.all(allShorts.map(async (short) => {
+      const user = await this.getUser(short.userId);
+      return { ...short, user: user! };
+    }));
+  }
+
+  async getShort(id: string): Promise<Short | undefined> {
+    const result = await db.select().from(shorts).where(eq(shorts.id, id)).limit(1);
+    return result[0];
+  }
+
+  async getShortsByUserId(userId: string): Promise<Array<Short & { user: User }>> {
+    const userShorts = await db.select()
+      .from(shorts)
+      .where(eq(shorts.userId, userId))
+      .orderBy(desc(shorts.createdAt));
+    
+    const user = await this.getUser(userId);
+    if (!user) return [];
+    
+    return userShorts.map(short => ({
+      ...short,
+      user,
+    }));
+  }
+
+  async createShort(insertShort: InsertShort): Promise<Short> {
+    const id = randomUUID();
+    const short = { ...insertShort, id };
+    await db.insert(shorts).values(short);
+    return short as Short;
+  }
+
+  async deleteShort(id: string): Promise<void> {
+    await db.delete(shorts).where(eq(shorts.id, id));
+  }
+
+  async incrementShortViewCount(id: string): Promise<void> {
+    await db.update(shorts)
+      .set({ viewCount: sql`${shorts.viewCount} + 1` })
+      .where(eq(shorts.id, id));
+  }
+
+  // Short likes
+  async getShortLike(shortId: string, userId: string): Promise<ShortLike | undefined> {
+    const result = await db.select().from(shortLikes)
+      .where(and(eq(shortLikes.shortId, shortId), eq(shortLikes.userId, userId)))
+      .limit(1);
+    return result[0];
+  }
+
+  async createShortLike(insertLike: InsertShortLike): Promise<ShortLike> {
+    const id = randomUUID();
+    const like = { ...insertLike, id };
+    await db.insert(shortLikes).values(like);
+    return like as ShortLike;
+  }
+
+  async updateShortLike(id: string, type: 'like' | 'dislike'): Promise<ShortLike | undefined> {
+    await db.update(shortLikes).set({ type }).where(eq(shortLikes.id, id));
+    const result = await db.select().from(shortLikes).where(eq(shortLikes.id, id)).limit(1);
+    return result[0];
+  }
+
+  async deleteShortLike(shortId: string, userId: string): Promise<void> {
+    await db.delete(shortLikes)
+      .where(and(eq(shortLikes.shortId, shortId), eq(shortLikes.userId, userId)));
+  }
+
+  async getShortLikesCount(shortId: string): Promise<{ likes: number; dislikes: number }> {
+    const allLikes = await db.select().from(shortLikes).where(eq(shortLikes.shortId, shortId));
+    const likes = allLikes.filter(l => l.type === 'like').length;
+    const dislikes = allLikes.filter(l => l.type === 'dislike').length;
+    return { likes, dislikes };
+  }
+
+  // Short comments
+  async getShortComments(shortId: string): Promise<Array<ShortComment & { user: User }>> {
+    const comments = await db.select().from(shortComments)
+      .where(eq(shortComments.shortId, shortId))
+      .orderBy(shortComments.createdAt);
+    
+    return Promise.all(comments.map(async (comment) => {
+      const user = await this.getUser(comment.userId);
+      return { ...comment, user: user! };
+    }));
+  }
+
+  async createShortComment(insertComment: InsertShortComment): Promise<ShortComment> {
+    const id = randomUUID();
+    const comment = { ...insertComment, id };
+    await db.insert(shortComments).values(comment);
+    return comment as ShortComment;
+  }
+
+  async deleteShortComment(id: string): Promise<void> {
+    await db.delete(shortComments).where(eq(shortComments.id, id));
+  }
+
+  // Groups
+  async getGroup(id: string): Promise<Group | undefined> {
+    const result = await db.select().from(groups).where(eq(groups.id, id)).limit(1);
+    return result[0];
+  }
+
+  async getGroupsByUser(userId: string): Promise<Array<Group & { memberCount: number }>> {
+    // Get all groups where user is an accepted member
+    const memberships = await db.select().from(groupMembers)
+      .where(and(
+        eq(groupMembers.userId, userId),
+        eq(groupMembers.status, "accepted")
+      ));
+    
+    const userGroups: Array<Group & { memberCount: number }> = [];
+    
+    for (const membership of memberships) {
+      const group = await this.getGroup(membership.groupId);
+      if (group) {
+        const members = await db.select().from(groupMembers)
+          .where(and(
+            eq(groupMembers.groupId, group.id),
+            eq(groupMembers.status, "accepted")
+          ));
+        userGroups.push({
+          ...group,
+          memberCount: members.length,
+        });
+      }
+    }
+    
+    return userGroups;
+  }
+
+  async createGroup(insertGroup: InsertGroup): Promise<Group> {
+    const id = randomUUID();
+    const group = { ...insertGroup, id };
+    await db.insert(groups).values(group);
+    return group as Group;
+  }
+
+  async deleteGroup(id: string): Promise<void> {
+    // Delete all members and messages first
+    await db.delete(groupMembers).where(eq(groupMembers.groupId, id));
+    await db.delete(groupMessages).where(eq(groupMessages.groupId, id));
+    await db.delete(groups).where(eq(groups.id, id));
+  }
+
+  // Group members
+  async getGroupMember(groupId: string, userId: string): Promise<GroupMember | undefined> {
+    const result = await db.select().from(groupMembers)
+      .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)))
+      .limit(1);
+    return result[0];
+  }
+
+  async getGroupMembers(groupId: string): Promise<Array<GroupMember & { user: User }>> {
+    const members = await db.select().from(groupMembers)
+      .where(eq(groupMembers.groupId, groupId));
+    
+    return Promise.all(members.map(async (member) => {
+      const user = await this.getUser(member.userId);
+      return { ...member, user: user! };
+    }));
+  }
+
+  async getGroupInvitations(userId: string): Promise<Array<GroupMember & { group: Group; invitedBy: User | null }>> {
+    const invitations = await db.select().from(groupMembers)
+      .where(and(
+        eq(groupMembers.userId, userId),
+        eq(groupMembers.status, "pending")
+      ));
+    
+    return Promise.all(invitations.map(async (invitation) => {
+      const group = await this.getGroup(invitation.groupId);
+      const invitedBy = invitation.invitedById ? await this.getUser(invitation.invitedById) : null;
+      return { ...invitation, group: group!, invitedBy };
+    }));
+  }
+
+  async createGroupMember(insertMember: InsertGroupMember): Promise<GroupMember> {
+    const id = randomUUID();
+    const member = { ...insertMember, id };
+    await db.insert(groupMembers).values(member);
+    return member as GroupMember;
+  }
+
+  async updateGroupMemberStatus(id: string, status: string, joinedAt?: string): Promise<GroupMember | undefined> {
+    const updates: any = { status };
+    if (joinedAt) {
+      updates.joinedAt = joinedAt;
+    }
+    await db.update(groupMembers).set(updates).where(eq(groupMembers.id, id));
+    const result = await db.select().from(groupMembers).where(eq(groupMembers.id, id)).limit(1);
+    return result[0];
+  }
+
+  async deleteGroupMember(groupId: string, userId: string): Promise<void> {
+    await db.delete(groupMembers)
+      .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)));
+  }
+
+  // Group messages
+  async getGroupMessages(groupId: string): Promise<Array<GroupMessage & { sender: User }>> {
+    const messages = await db.select().from(groupMessages)
+      .where(eq(groupMessages.groupId, groupId))
+      .orderBy(groupMessages.timestamp);
+    
+    return Promise.all(messages.map(async (message) => {
+      const sender = await this.getUser(message.senderId);
+      return { ...message, sender: sender! };
+    }));
+  }
+
+  async createGroupMessage(insertMessage: InsertGroupMessage): Promise<GroupMessage> {
+    const id = randomUUID();
+    const message = { ...insertMessage, id };
+    await db.insert(groupMessages).values(message);
+    return message as GroupMessage;
+  }
+
+  // Message reactions
+  async getMessageReactions(messageId: string, messageType: 'direct' | 'group'): Promise<Array<MessageReaction & { user: User }>> {
+    const reactions = await db.select().from(messageReactions)
+      .where(and(
+        eq(messageReactions.messageId, messageId),
+        eq(messageReactions.messageType, messageType)
+      ));
+    
+    return Promise.all(reactions.map(async (reaction) => {
+      const user = await this.getUser(reaction.userId);
+      return { ...reaction, user: user! };
+    }));
+  }
+
+  async getMessageReaction(messageId: string, messageType: 'direct' | 'group', userId: string): Promise<MessageReaction | undefined> {
+    const result = await db.select().from(messageReactions)
+      .where(and(
+        eq(messageReactions.messageId, messageId),
+        eq(messageReactions.messageType, messageType),
+        eq(messageReactions.userId, userId)
+      ))
+      .limit(1);
+    return result[0];
+  }
+
+  async createMessageReaction(insertReaction: InsertMessageReaction): Promise<MessageReaction> {
+    const id = randomUUID();
+    const reaction = { ...insertReaction, id };
+    await db.insert(messageReactions).values(reaction);
+    return reaction as MessageReaction;
+  }
+
+  async deleteMessageReaction(messageId: string, messageType: 'direct' | 'group', userId: string): Promise<void> {
+    await db.delete(messageReactions)
+      .where(and(
+        eq(messageReactions.messageId, messageId),
+        eq(messageReactions.messageType, messageType),
+        eq(messageReactions.userId, userId)
+      ));
+  }
+
+  // Message read receipts
+  async getMessageReadReceipts(messageId: string, messageType: 'direct' | 'group'): Promise<Array<MessageReadReceipt & { user: User }>> {
+    const receipts = await db.select().from(messageReadReceipts)
+      .where(and(
+        eq(messageReadReceipts.messageId, messageId),
+        eq(messageReadReceipts.messageType, messageType)
+      ));
+    
+    return Promise.all(receipts.map(async (receipt) => {
+      const user = await this.getUser(receipt.userId);
+      return { ...receipt, user: user! };
+    }));
+  }
+
+  async getMessageReadReceipt(messageId: string, messageType: 'direct' | 'group', userId: string): Promise<MessageReadReceipt | undefined> {
+    const result = await db.select().from(messageReadReceipts)
+      .where(and(
+        eq(messageReadReceipts.messageId, messageId),
+        eq(messageReadReceipts.messageType, messageType),
+        eq(messageReadReceipts.userId, userId)
+      ))
+      .limit(1);
+    return result[0];
+  }
+
+  async createMessageReadReceipt(insertReceipt: InsertMessageReadReceipt): Promise<MessageReadReceipt> {
+    const id = randomUUID();
+    const receipt = { ...insertReceipt, id };
+    await db.insert(messageReadReceipts).values(receipt);
+    return receipt as MessageReadReceipt;
+  }
+
+  async markMessagesAsReadByUser(userId: string, messageIds: string[], messageType: 'direct' | 'group'): Promise<void> {
+    const now = new Date().toISOString();
+    for (const messageId of messageIds) {
+      const existing = await this.getMessageReadReceipt(messageId, messageType, userId);
+      if (!existing) {
+        await this.createMessageReadReceipt({
+          messageId,
+          messageType,
+          userId,
+          readAt: now,
+        });
+      }
+    }
   }
 }
 

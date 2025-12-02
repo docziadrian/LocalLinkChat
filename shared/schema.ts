@@ -109,6 +109,37 @@ export const insertDirectMessageSchema = createInsertSchema(directMessages).omit
 export type InsertDirectMessage = z.infer<typeof insertDirectMessageSchema>;
 export type DirectMessage = typeof directMessages.$inferSelect;
 
+// Message reactions (emoji reactions)
+export const messageReactions = sqliteTable("message_reactions", {
+  id: text("id").primaryKey(),
+  messageId: text("message_id").notNull(),
+  messageType: text("message_type").notNull(), // 'direct' or 'group'
+  userId: text("user_id").notNull(),
+  emoji: text("emoji").notNull(), // 😂 ❤ 👍 😒 😠
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertMessageReactionSchema = createInsertSchema(messageReactions).omit({ id: true });
+export type InsertMessageReaction = z.infer<typeof insertMessageReactionSchema>;
+export type MessageReaction = typeof messageReactions.$inferSelect;
+
+// Message read receipts (for group messages primarily)
+export const messageReadReceipts = sqliteTable("message_read_receipts", {
+  id: text("id").primaryKey(),
+  messageId: text("message_id").notNull(),
+  messageType: text("message_type").notNull(), // 'direct' or 'group'
+  userId: text("user_id").notNull(),
+  readAt: text("read_at").notNull(),
+});
+
+export const insertMessageReadReceiptSchema = createInsertSchema(messageReadReceipts).omit({ id: true });
+export type InsertMessageReadReceipt = z.infer<typeof insertMessageReadReceiptSchema>;
+export type MessageReadReceipt = typeof messageReadReceipts.$inferSelect;
+
+// Supported emoji reactions
+export const SUPPORTED_REACTIONS = ["😂", "❤", "👍", "😒", "😠"] as const;
+export type SupportedReaction = typeof SUPPORTED_REACTIONS[number];
+
 // Posts table - user content/stories
 export const posts = sqliteTable("posts", {
   id: text("id").primaryKey(),
@@ -148,6 +179,92 @@ export const postComments = sqliteTable("post_comments", {
 export const insertPostCommentSchema = createInsertSchema(postComments).omit({ id: true });
 export type InsertPostComment = z.infer<typeof insertPostCommentSchema>;
 export type PostComment = typeof postComments.$inferSelect;
+
+// Shorts/REALS - short vertical videos
+export const shorts = sqliteTable("shorts", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  title: text("title"),
+  description: text("description"),
+  videoUrl: text("video_url").notNull(),
+  thumbnailUrl: text("thumbnail_url"),
+  duration: integer("duration"), // duration in seconds
+  viewCount: integer("view_count").default(0),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertShortSchema = createInsertSchema(shorts).omit({ id: true });
+export type InsertShort = z.infer<typeof insertShortSchema>;
+export type Short = typeof shorts.$inferSelect;
+
+// Short likes/dislikes table
+export const shortLikes = sqliteTable("short_likes", {
+  id: text("id").primaryKey(),
+  shortId: text("short_id").notNull(),
+  userId: text("user_id").notNull(),
+  type: text("type").notNull(), // 'like' or 'dislike'
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertShortLikeSchema = createInsertSchema(shortLikes).omit({ id: true });
+export type InsertShortLike = z.infer<typeof insertShortLikeSchema>;
+export type ShortLike = typeof shortLikes.$inferSelect;
+
+// Short comments table
+export const shortComments = sqliteTable("short_comments", {
+  id: text("id").primaryKey(),
+  shortId: text("short_id").notNull(),
+  userId: text("user_id").notNull(),
+  content: text("content").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertShortCommentSchema = createInsertSchema(shortComments).omit({ id: true });
+export type InsertShortComment = z.infer<typeof insertShortCommentSchema>;
+export type ShortComment = typeof shortComments.$inferSelect;
+
+// Groups table for group chats
+export const groups = sqliteTable("groups", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  avatarUrl: text("avatar_url"),
+  createdById: text("created_by_id").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertGroupSchema = createInsertSchema(groups).omit({ id: true });
+export type InsertGroup = z.infer<typeof insertGroupSchema>;
+export type Group = typeof groups.$inferSelect;
+
+// Group members table
+export const groupMembers = sqliteTable("group_members", {
+  id: text("id").primaryKey(),
+  groupId: text("group_id").notNull(),
+  userId: text("user_id").notNull(),
+  role: text("role").notNull().default("member"), // 'admin' or 'member'
+  status: text("status").notNull().default("pending"), // 'pending', 'accepted', 'declined'
+  invitedById: text("invited_by_id"),
+  createdAt: text("created_at").notNull(),
+  joinedAt: text("joined_at"),
+});
+
+export const insertGroupMemberSchema = createInsertSchema(groupMembers).omit({ id: true });
+export type InsertGroupMember = z.infer<typeof insertGroupMemberSchema>;
+export type GroupMember = typeof groupMembers.$inferSelect;
+
+// Group messages table
+export const groupMessages = sqliteTable("group_messages", {
+  id: text("id").primaryKey(),
+  groupId: text("group_id").notNull(),
+  senderId: text("sender_id").notNull(),
+  content: text("content").notNull(),
+  timestamp: text("timestamp").notNull(),
+});
+
+export const insertGroupMessageSchema = createInsertSchema(groupMessages).omit({ id: true });
+export type InsertGroupMessage = z.infer<typeof insertGroupMessageSchema>;
+export type GroupMessage = typeof groupMessages.$inferSelect;
 
 // Activity feed items
 export interface ActivityItem {

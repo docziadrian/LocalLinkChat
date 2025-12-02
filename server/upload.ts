@@ -11,12 +11,16 @@ const router = Router();
 // Ensure upload directories exist
 const profileUploadDir = path.join(process.cwd(), "profile_pictures");
 const postUploadDir = path.join(process.cwd(), "post_images");
+const shortVideosDir = path.join(process.cwd(), "short_videos");
 
 if (!fs.existsSync(profileUploadDir)) {
   fs.mkdirSync(profileUploadDir, { recursive: true });
 }
 if (!fs.existsSync(postUploadDir)) {
   fs.mkdirSync(postUploadDir, { recursive: true });
+}
+if (!fs.existsSync(shortVideosDir)) {
+  fs.mkdirSync(shortVideosDir, { recursive: true });
 }
 
 const uploadDir = profileUploadDir;
@@ -147,6 +151,77 @@ router.post("/post-image", requireAuth, postImageUpload.single("image"), async (
   } catch (error) {
     console.error("Post image upload error:", error);
     res.status(500).json({ error: "Failed to upload post image" });
+  }
+});
+
+// Configure multer for short videos
+const videoFileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+  const allowedTypes = ["video/mp4", "video/webm", "video/quicktime", "video/x-msvideo"];
+  if (allowedTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error("Invalid file type. Only MP4, WebM, MOV, and AVI are allowed."));
+  }
+};
+
+const shortVideoStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, shortVideosDir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const filename = `${randomUUID()}${ext}`;
+    cb(null, filename);
+  },
+});
+
+const shortVideoUpload = multer({
+  storage: shortVideoStorage,
+  fileFilter: videoFileFilter,
+  limits: {
+    fileSize: 100 * 1024 * 1024, // 100MB limit for short videos
+  },
+});
+
+// Upload short video
+router.post("/short-video", requireAuth, shortVideoUpload.single("video"), async (req: Request, res: Response) => {
+  try {
+    const file = req.file;
+
+    if (!file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    const videoUrl = `/short_videos/${file.filename}`;
+
+    res.json({ 
+      success: true, 
+      videoUrl,
+    });
+  } catch (error) {
+    console.error("Short video upload error:", error);
+    res.status(500).json({ error: "Failed to upload short video" });
+  }
+});
+
+// Upload short thumbnail
+router.post("/short-thumbnail", requireAuth, postImageUpload.single("thumbnail"), async (req: Request, res: Response) => {
+  try {
+    const file = req.file;
+
+    if (!file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    const thumbnailUrl = `/post_images/${file.filename}`;
+
+    res.json({ 
+      success: true, 
+      thumbnailUrl,
+    });
+  } catch (error) {
+    console.error("Short thumbnail upload error:", error);
+    res.status(500).json({ error: "Failed to upload thumbnail" });
   }
 });
 

@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { 
   Home, 
   FileText,
+  Video,
   Users, 
   User,
   MessageSquare,
@@ -88,6 +89,16 @@ export function AppSidebar() {
                   <Link href="/posts" data-testid="nav-posts">
                     <FileText className="w-4 h-4" />
                     <span>{t("nav.posts")}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              {/* REALS */}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={location === "/reals"}>
+                  <Link href="/reals" data-testid="nav-reals">
+                    <Video className="w-4 h-4" />
+                    <span>{t("nav.reals")}</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

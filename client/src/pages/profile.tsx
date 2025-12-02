@@ -42,12 +42,14 @@ import {
   MessageSquare,
   Loader2,
   FileText,
-  ArrowRight
+  ArrowRight,
+  Video,
+  Play
 } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { INTEREST_CATEGORIES, type User, type Post } from "@shared/schema";
+import { INTEREST_CATEGORIES, type User, type Post, type Short } from "@shared/schema";
 
 const profileFormSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
@@ -117,6 +119,7 @@ export default function Profile() {
   const [isEditing, setIsEditing] = useState(false);
   const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [contentTab, setContentTab] = useState<'posts' | 'reals'>('posts');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isOwnProfile = !params?.id;
@@ -143,6 +146,18 @@ export default function Profile() {
     queryFn: async () => {
       if (!targetUserId) return [];
       const res = await fetch(`/api/users/${targetUserId}/posts`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!targetUserId,
+  });
+
+  // Fetch user's REALS
+  const { data: userReals = [] } = useQuery<Array<Short & { user: User }>>({
+    queryKey: ["/api/users", targetUserId, "reals"],
+    queryFn: async () => {
+      if (!targetUserId) return [];
+      const res = await fetch(`/api/users/${targetUserId}/reals`, { credentials: "include" });
       if (!res.ok) return [];
       return res.json();
     },
@@ -677,71 +692,146 @@ export default function Profile() {
         </Card>
       )}
 
-      {/* User Posts Section */}
+      {/* Content Tabs - Posts/REALS Selector */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <FileText className="w-5 h-5 text-primary" />
-            {t("profile.userPosts", { name: displayUser.fullName || displayUser.name || "" })}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {userPosts.length === 0 ? (
-            <div className="text-center py-8">
-              <FileText className="w-12 h-12 mx-auto text-muted-foreground/50 mb-3" />
-              <p className="text-muted-foreground font-medium">{t("profile.noPosts")}</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                {t("profile.noPostsDescription")}
-              </p>
+        <CardContent className="pt-6">
+          {/* Tab Selector */}
+          <div className="flex justify-center mb-6">
+            <div className="inline-flex bg-muted rounded-lg p-1">
+              <button
+                onClick={() => setContentTab('posts')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  contentTab === 'posts'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <FileText className="w-4 h-4" />
+                {t("profile.posts")}
+              </button>
+              <button
+                onClick={() => setContentTab('reals')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  contentTab === 'reals'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Video className="w-4 h-4" />
+                REALS
+              </button>
             </div>
-          ) : (
-            <div className="space-y-4">
-              {userPosts.map((post) => (
-                <div 
-                  key={post.id} 
-                  className="flex gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors"
-                >
-                  <Avatar className="w-10 h-10 flex-shrink-0">
-                    <AvatarImage src={post.user.avatarUrl || undefined} />
-                    <AvatarFallback className="bg-primary/10 text-primary text-sm">
-                      {getInitials(post.user.fullName || post.user.name || "")}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <p className="font-medium text-sm">
-                        {post.user.fullName || post.user.name}
-                      </p>
-                      <span className="text-xs text-muted-foreground flex-shrink-0">
-                        {formatPostDate(post.createdAt)}
-                      </span>
-                    </div>
-                    <Link 
-                      href={`/posts?highlight=${post.id}`}
-                      className="group"
-                    >
-                      <p className="text-sm text-muted-foreground group-hover:text-primary transition-colors cursor-pointer">
-                        {truncateContent(post.content)}
-                        {post.content.split(/\s+/).length > 10 && (
-                          <span className="inline-flex items-center ml-1 text-primary opacity-0 group-hover:opacity-100 transition-opacity">
-                            <ArrowRight className="w-3 h-3" />
-                          </span>
-                        )}
-                      </p>
-                    </Link>
-                    {post.imageUrl && (
-                      <div className="mt-2">
-                        <img 
-                          src={post.imageUrl} 
-                          alt="" 
-                          className="w-16 h-16 object-cover rounded-lg"
-                        />
-                      </div>
-                    )}
-                  </div>
+          </div>
+
+          {/* Posts Content */}
+          {contentTab === 'posts' && (
+            <>
+              {userPosts.length === 0 ? (
+                <div className="text-center py-8">
+                  <FileText className="w-12 h-12 mx-auto text-muted-foreground/50 mb-3" />
+                  <p className="text-muted-foreground font-medium">{t("profile.noPosts")}</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {t("profile.noPostsDescription")}
+                  </p>
                 </div>
-              ))}
-            </div>
+              ) : (
+                <div className="space-y-4">
+                  {userPosts.map((post) => (
+                    <div 
+                      key={post.id} 
+                      className="flex gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors"
+                    >
+                      <Avatar className="w-10 h-10 flex-shrink-0">
+                        <AvatarImage src={post.user.avatarUrl || undefined} />
+                        <AvatarFallback className="bg-primary/10 text-primary text-sm">
+                          {getInitials(post.user.fullName || post.user.name || "")}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <p className="font-medium text-sm">
+                            {post.user.fullName || post.user.name}
+                          </p>
+                          <span className="text-xs text-muted-foreground flex-shrink-0">
+                            {formatPostDate(post.createdAt)}
+                          </span>
+                        </div>
+                        <Link 
+                          href={`/posts?highlight=${post.id}`}
+                          className="group"
+                        >
+                          <p className="text-sm text-muted-foreground group-hover:text-primary transition-colors cursor-pointer">
+                            {truncateContent(post.content)}
+                            {post.content.split(/\s+/).length > 10 && (
+                              <span className="inline-flex items-center ml-1 text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+                                <ArrowRight className="w-3 h-3" />
+                              </span>
+                            )}
+                          </p>
+                        </Link>
+                        {post.imageUrl && (
+                          <div className="mt-2">
+                            <img 
+                              src={post.imageUrl} 
+                              alt="" 
+                              className="w-16 h-16 object-cover rounded-lg"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* REALS Content */}
+          {contentTab === 'reals' && (
+            <>
+              {userReals.length === 0 ? (
+                <div className="text-center py-8">
+                  <Video className="w-12 h-12 mx-auto text-muted-foreground/50 mb-3" />
+                  <p className="text-muted-foreground font-medium">{t("profile.noReals")}</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {t("profile.noRealsDescription")}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                  {userReals.map((real) => (
+                    <Link key={real.id} href={`/reals?id=${real.id}`}>
+                      <div className="group relative aspect-[9/16] rounded-lg overflow-hidden bg-black cursor-pointer">
+                        {real.thumbnailUrl ? (
+                          <img
+                            src={real.thumbnailUrl}
+                            alt={real.title || ""}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <video
+                            src={real.videoUrl}
+                            className="w-full h-full object-cover"
+                            muted
+                            playsInline
+                          />
+                        )}
+                        <div className="absolute inset-0 bg-black/30 group-hover:bg-black/50 transition-colors flex items-center justify-center">
+                          <Play className="w-8 h-8 text-white opacity-80 group-hover:opacity-100 transition-opacity" />
+                        </div>
+                        {real.title && (
+                          <div className="absolute bottom-2 left-2 right-2">
+                            <p className="text-xs text-white truncate font-medium drop-shadow-lg">
+                              {real.title}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
