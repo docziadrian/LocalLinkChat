@@ -112,6 +112,12 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || "5000", 10);
+  
+  // Increase server timeout for large file uploads (10 minutes)
+  httpServer.timeout = 600000; // 10 minutes in milliseconds
+  httpServer.keepAliveTimeout = 65000; // 65 seconds
+  httpServer.headersTimeout = 66000; // 66 seconds (must be > keepAliveTimeout)
+  
   httpServer.listen(port, () => {
     log(`serving on port ${port}`);
   });

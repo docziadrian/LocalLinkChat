@@ -835,20 +835,34 @@ export default function RealsPage() {
       
       console.log("Uploading video:", videoFile.name, "Size:", videoFile.size);
       
+      // Create AbortController with long timeout for large video uploads (10 minutes)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 minutes
+      
       let uploadRes;
       try {
         uploadRes = await fetch("/api/upload/short-video", {
           method: "POST",
           credentials: "include",
           body: formData,
+          signal: controller.signal,
+          // Note: fetch doesn't support timeout directly, using AbortController instead
         });
+        
+        clearTimeout(timeoutId);
       } catch (fetchError: any) {
         // Handle network errors (CORS, connection issues, etc.)
         console.error("Network error during upload:", fetchError);
-        if (fetchError.message && fetchError.message.includes('NetworkError')) {
-          throw new Error("Network error. Please check your internet connection. If the file is large, try a smaller video or check your connection speed.");
+        clearTimeout(timeoutId);
+        
+        if (fetchError.name === 'AbortError') {
+          throw new Error("Upload timeout. A fájl feltöltése túl sokáig tartott. Próbáljon kisebb videót vagy ellenőrizze az internetkapcsolatát.");
         }
-        throw new Error(fetchError.message || "Failed to upload video. Please check your connection and try again.");
+        
+        if (fetchError.message && (fetchError.message.includes('NetworkError') || fetchError.message.includes('Failed to fetch'))) {
+          throw new Error("Hálózati hiba. Ellenőrizze az internetkapcsolatát. Ha a fájl nagy, próbáljon kisebb videót vagy ellenőrizze a kapcsolat sebességét.");
+        }
+        throw new Error(fetchError.message || "A videó feltöltése sikertelen. Ellenőrizze a kapcsolatot és próbálja újra.");
       }
       
       if (!uploadRes.ok) {

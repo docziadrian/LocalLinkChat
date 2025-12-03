@@ -7,8 +7,9 @@
 # Check firewall status
 sudo ufw status
 
-# Allow your application port (default: 5000)
+# Allow your application port (default: 5000, or 3000 if using that)
 sudo ufw allow 5000/tcp
+sudo ufw allow 3000/tcp  # If your app runs on port 3000
 
 # If using HTTPS, allow ports 80 and 443
 sudo ufw allow 80/tcp
@@ -34,7 +35,7 @@ server {
     client_header_timeout 300s;
 
     location / {
-        proxy_pass http://localhost:5000;
+        proxy_pass http://localhost:3000;  # Change to 3000 if your app runs on that port
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -158,7 +159,7 @@ sudo nano /etc/nginx/nginx.conf
 
 ```bash
 # PM2 logs
-pm2 logs locallinkchat
+ pm2 logs locallinkchat
 
 # Nginx logs
 sudo tail -f /var/log/nginx/error.log
@@ -193,13 +194,22 @@ chmod 644 /path/to/app/locallinkchat.db
 
 ## Quick Troubleshooting
 
-### NetworkError Issues:
-1. ✅ Check firewall allows port 5000
+### NetworkError Issues (especially for video uploads):
+1. ✅ Check firewall allows your app port (3000 or 5000)
 2. ✅ Verify reverse proxy configuration (if using)
 3. ✅ Check CORS headers in response
 4. ✅ Verify file size limits (200MB)
-5. ✅ Check timeout settings (300s for large uploads)
+5. ✅ **IMPORTANT**: Check timeout settings:
+   - Node.js server timeout: 600000ms (10 minutes) - already set in code
+   - Nginx timeouts: 300s minimum (if using nginx)
+   - Client fetch timeout: 600000ms (10 minutes) - already set in code
 6. ✅ Verify SSL certificate is valid (if using HTTPS)
+7. ✅ **For video uploads specifically**: 
+   - Check if nginx `client_max_body_size` is set to 200M
+   - Check if nginx `client_body_timeout` is at least 300s
+   - Check if nginx `proxy_read_timeout` is at least 300s
+   - Verify Node.js process has enough memory
+   - Check disk space in upload directory
 
 ### Common Issues:
 - **413 Payload Too Large**: Increase `client_max_body_size` in Nginx
