@@ -196,12 +196,14 @@ router.post("/short-video", requireAuth, shortVideoUpload.single("video"), async
 
     // Check file size
     const maxSize = 200 * 1024 * 1024; // 200MB
+    /*
     if (file.size > maxSize) {
       return res.status(413).json({ 
         error: "File too large", 
         details: `Maximum file size is ${maxSize / (1024 * 1024)}MB. Your file is ${(file.size / (1024 * 1024)).toFixed(2)}MB.` 
       });
     }
+      */
 
     // Verify the file was saved correctly
     const filePath = path.join(shortVideosDir, file.filename);
