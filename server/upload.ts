@@ -189,18 +189,31 @@ router.post("/short-video", requireAuth, shortVideoUpload.single("video"), async
     const file = req.file;
 
     if (!file) {
+      console.error("Short video upload: No file in request");
       return res.status(400).json({ error: "No file uploaded" });
     }
 
+    // Verify the file was saved correctly
+    const filePath = path.join(shortVideosDir, file.filename);
+    if (!fs.existsSync(filePath)) {
+      console.error(`Short video upload: File not found at ${filePath}`);
+      return res.status(500).json({ error: "File save failed" });
+    }
+
+    // Return relative URL (works in both dev and production)
     const videoUrl = `/short_videos/${file.filename}`;
+
+    console.log(`Short video uploaded successfully: ${videoUrl}, size: ${file.size} bytes`);
 
     res.json({ 
       success: true, 
       videoUrl,
+      filename: file.filename,
+      size: file.size,
     });
-  } catch (error) {
-    console.error("Short video upload error:", error);
-    res.status(500).json({ error: "Failed to upload short video" });
+  } catch (error: any) {
+    console.error("Short video upload error:", error.message || error);
+    res.status(500).json({ error: "Failed to upload short video", details: error.message });
   }
 });
 

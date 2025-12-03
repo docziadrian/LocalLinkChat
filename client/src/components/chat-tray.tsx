@@ -1,16 +1,21 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card } from "@/components/ui/card";
-import { X, Minus, Send, ImagePlus } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { X, Minus, Send, ImagePlus, Check, CheckCheck, Smile } from "lucide-react";
+import { ImageLightbox, useLightbox } from "@/components/image-lightbox";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
 import type { User, DirectMessage } from "@shared/schema";
+
+// Supported emoji reactions (same as messages.tsx)
+const EMOJI_REACTIONS = ["😂", "❤️", "👍", "😒", "😠"] as const;
 
 interface ChatWindow {
   id: string;
@@ -37,30 +42,39 @@ function formatTime(timestamp: string) {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-// Resize image to 100x100
+// Resize image to max 800px dimension while maintaining aspect ratio (for higher quality zoom)
 async function resizeImage(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       const img = new Image();
       img.onload = () => {
+        const maxDimension = 800;
+        let width = img.width;
+        let height = img.height;
+        
+        // Only resize if larger than max dimension
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+        
         const canvas = document.createElement("canvas");
-        canvas.width = 100;
-        canvas.height = 100;
+        canvas.width = width;
+        canvas.height = height;
         const ctx = canvas.getContext("2d");
         if (!ctx) {
           reject(new Error("Failed to get canvas context"));
           return;
         }
         
-        const scale = Math.max(100 / img.width, 100 / img.height);
-        const scaledWidth = img.width * scale;
-        const scaledHeight = img.height * scale;
-        const offsetX = (100 - scaledWidth) / 2;
-        const offsetY = (100 - scaledHeight) / 2;
-        
-        ctx.drawImage(img, offsetX, offsetY, scaledWidth, scaledHeight);
-        resolve(canvas.toDataURL("image/jpeg", 0.8));
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", 0.85));
       };
       img.onerror = () => reject(new Error("Failed to load image"));
       img.src = e.target?.result as string;
@@ -74,6 +88,7 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
   const { t } = useI18n();
   const { toast } = useToast();
   const { user: currentUser } = useAuth();
+  const { lightboxState, openLightbox, closeLightbox } = useLightbox();
   const [openChats, setOpenChats] = useState<ChatWindow[]>([]);
   const [chatMessages, setChatMessages] = useState<Record<string, DirectMessage[]>>({});
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
@@ -163,14 +178,14 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
     return () => ws.removeEventListener("message", handleMessage);
   }, [wsRef, currentUser?.id, openChats, onNewMessage]);
 
-  // Scroll to bottom when new messages arrive
+  // Scroll to bottom when new messages arrive or typing indicator shows
   useEffect(() => {
     openChats.forEach((chat) => {
       if (!chat.isMinimized) {
         messagesEndRefs.current[chat.id]?.scrollIntoView({ behavior: "smooth" });
       }
     });
-  }, [chatMessages, openChats]);
+  }, [chatMessages, openChats, typingUsers]);
 
   const openChat = useCallback((user: User) => {
     setOpenChats((prev) => {
@@ -289,8 +304,27 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
     }
   };
 
-  // Render message content with image support
+  // Render message content with image and GIF support
   const renderMessageContent = (content: string) => {
+    // Check for GIF
+    const gifMatch = content.match(/\[GIF\](.*?)\[\/GIF\]/);
+    if (gifMatch) {
+      const gifUrl = gifMatch[1];
+      const textContent = content.replace(/\[GIF\].*?\[\/GIF\]/, "").trim();
+      return (
+        <div>
+          <img 
+            src={gifUrl} 
+            alt={t("messages.gifSent")}
+            className="max-w-[120px] max-h-[120px] object-cover rounded-lg mb-1 cursor-pointer hover:opacity-90 transition-opacity"
+            onClick={() => openLightbox(gifUrl, t("messages.gifSent"))}
+          />
+          {textContent && <p className="text-xs sm:text-sm">{textContent}</p>}
+        </div>
+      );
+    }
+    
+    // Check for image
     const imageMatch = content.match(/\[IMAGE\](.*?)\[\/IMAGE\]/);
     if (imageMatch) {
       const imageData = imageMatch[1];
@@ -299,14 +333,31 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
         <div>
           <img 
             src={imageData} 
-            alt="Image" 
-            className="w-20 h-20 object-cover rounded-lg mb-1"
+            alt={t("messages.imageSent")}
+            className="max-w-[120px] max-h-[120px] object-cover rounded-lg mb-1 cursor-pointer hover:opacity-90 transition-opacity"
+            onClick={() => openLightbox(imageData, t("messages.imageSent"))}
+            title={t("messages.clickToZoom")}
           />
           {textContent && <p className="text-xs sm:text-sm">{textContent}</p>}
         </div>
       );
     }
     return <p className="text-xs sm:text-sm">{content}</p>;
+  };
+  
+  // State for reaction popup
+  const [reactionPopupMsgId, setReactionPopupMsgId] = useState<string | null>(null);
+  
+  // Handle sending a reaction
+  const handleReaction = async (messageId: string, emoji: string) => {
+    try {
+      await apiRequest("POST", `/api/messages/${messageId}/reactions`, { emoji, messageType: 'direct' });
+      setReactionPopupMsgId(null);
+      // Refresh messages
+      queryClient.invalidateQueries({ queryKey: ["messages"] });
+    } catch (error) {
+      console.error("Failed to add reaction:", error);
+    }
   };
 
   // Expose openChat method globally for other components
@@ -420,17 +471,73 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
                           msg.senderId === currentUser?.id ? "justify-end" : "justify-start"
                         }`}
                       >
-                        <div
-                          className={`max-w-[85%] px-2 sm:px-3 py-1.5 sm:py-2 rounded-2xl ${
-                            msg.senderId === currentUser?.id
-                              ? "bg-primary text-primary-foreground rounded-br-md"
-                              : "bg-muted rounded-bl-md"
-                          }`}
-                        >
-                          {renderMessageContent(msg.content)}
-                          <p className="text-[9px] sm:text-[10px] opacity-70 mt-0.5">
-                            {formatTime(msg.timestamp)}
-                          </p>
+                        <div className="flex flex-col max-w-[85%]">
+                          <div className="relative group">
+                            <div
+                              className={`px-2 sm:px-3 py-1.5 sm:py-2 rounded-2xl ${
+                                msg.senderId === currentUser?.id
+                                  ? "bg-primary text-primary-foreground rounded-br-md"
+                                  : "bg-muted rounded-bl-md"
+                              }`}
+                            >
+                              {renderMessageContent(msg.content)}
+                              <div className="flex items-center justify-between gap-2 mt-0.5">
+                                <p className="text-[9px] sm:text-[10px] opacity-70">
+                                  {formatTime(msg.timestamp)}
+                                </p>
+                                {/* Read/unread status indicator for sent messages */}
+                                {msg.senderId === currentUser?.id && (
+                                  <span className={`inline-flex items-center justify-center rounded-full p-0.5 ${msg.isRead ? 'text-green-500 bg-black/90' : 'text-blue-500 bg-black/90'}`}>
+                                    {msg.isRead ? <CheckCheck className="w-3 h-3" /> : <Check className="w-3 h-3" />}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            
+                            {/* Reaction picker trigger - smaller for tray */}
+                            <Popover 
+                              open={reactionPopupMsgId === msg.id} 
+                              onOpenChange={(open) => setReactionPopupMsgId(open ? msg.id : null)}
+                            >
+                              <PopoverTrigger asChild>
+                                <button 
+                                  className={`absolute ${msg.senderId === currentUser?.id ? '-left-6' : '-right-6'} top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-muted/50 transition-colors opacity-0 group-hover:opacity-100`}
+                                >
+                                  <Smile className="w-3 h-3 text-muted-foreground" />
+                                </button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-1" side="top" align="center">
+                                <div className="flex gap-0.5">
+                                  {EMOJI_REACTIONS.map((emoji) => (
+                                    <button
+                                      key={emoji}
+                                      onClick={() => handleReaction(msg.id, emoji)}
+                                      className="text-base p-1 rounded hover:bg-muted transition-colors"
+                                    >
+                                      {emoji}
+                                    </button>
+                                  ))}
+                                </div>
+                              </PopoverContent>
+                            </Popover>
+                          </div>
+                          
+                          {/* Reactions display */}
+                          {(msg as any).reactions && (msg as any).reactions.length > 0 && (
+                            <div className="flex gap-0.5 mt-0.5">
+                              {Object.entries(
+                                ((msg as any).reactions as Array<{ emoji: string }>).reduce((acc: Record<string, number>, r) => {
+                                  acc[r.emoji] = (acc[r.emoji] || 0) + 1;
+                                  return acc;
+                                }, {})
+                              ).map(([emoji, count]) => (
+                                <span key={emoji} className="inline-flex items-center gap-0.5 bg-muted/50 rounded-full px-1 py-0.5 text-[10px]">
+                                  {emoji}
+                                  {(count as number) > 1 && <span className="text-muted-foreground">{count as number}</span>}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -519,6 +626,14 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
           ))}
         </AnimatePresence>
       </div>
+
+      {/* Image Lightbox for zooming images */}
+      <ImageLightbox
+        src={lightboxState.src}
+        alt={lightboxState.alt}
+        isOpen={lightboxState.isOpen}
+        onClose={closeLightbox}
+      />
     </div>
   );
 }

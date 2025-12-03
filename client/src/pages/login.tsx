@@ -130,17 +130,17 @@ export default function LoginPage() {
     try {
       const result = await loginWithGoogle(response.credential);
       if (result.success) {
-        if (result.profileCompleted) {
-          navigate("/");
-        } else {
-          navigate("/setup");
-        }
+        // Use window.location for a clean navigation that ensures fresh auth state
+        // This prevents the race condition where the router catches the navigation
+        // before React Query has updated the auth state
+        const targetPath = result.profileCompleted ? "/" : "/setup";
+        window.location.href = targetPath;
       } else {
         setError(t("auth.magicLinkError"));
+        setIsLoading(false);
       }
     } catch (err) {
       setError(t("errors.general"));
-    } finally {
       setIsLoading(false);
     }
   };

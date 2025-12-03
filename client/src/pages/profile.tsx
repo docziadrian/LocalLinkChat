@@ -792,9 +792,9 @@ export default function Profile() {
               {userReals.length === 0 ? (
                 <div className="text-center py-8">
                   <Video className="w-12 h-12 mx-auto text-muted-foreground/50 mb-3" />
-                  <p className="text-muted-foreground font-medium">{t("profile.noReals")}</p>
+                  <p className="text-muted-foreground font-medium">{t("profile.noReels")}</p>
                   <p className="text-sm text-muted-foreground mt-1">
-                    {t("profile.noRealsDescription")}
+                    {t("profile.noReelsDescription")}
                   </p>
                 </div>
               ) : (

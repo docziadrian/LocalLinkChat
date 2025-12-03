@@ -1,8 +1,10 @@
-import { useState, useRef, useEffect, useCallback } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useQuery, useMutation, useInfiniteQuery } from "@tanstack/react-query";
 import { Link, useSearch } from "wouter";
+import { motion, AnimatePresence } from "framer-motion";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +13,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import {
   Dialog,
   DialogContent,
@@ -90,6 +98,34 @@ function formatTimeAgo(timestamp: string, t: (key: string, vars?: Record<string,
   return t("posts.daysAgo", { count: diffDays });
 }
 
+// Page size for lazy loading
+const PAGE_SIZE = 5;
+
+// Animation variants for TikTok-like seamless transitions
+// The key is both items are visible simultaneously - incoming slides over outgoing
+const reelVariants = {
+  enter: (direction: number) => ({
+    y: direction > 0 ? "100%" : "-100%",
+    zIndex: 1,
+  }),
+  center: {
+    y: 0,
+    zIndex: 1,
+    transition: {
+      duration: 0.3,
+      ease: [0.32, 0.72, 0, 1], // Custom ease for snappy TikTok feel
+    },
+  },
+  exit: (direction: number) => ({
+    y: direction < 0 ? "30%" : "-30%",
+    zIndex: 0,
+    transition: {
+      duration: 0.3,
+      ease: [0.32, 0.72, 0, 1],
+    },
+  }),
+};
+
 // Single REAL item component with full-screen view
 function ReelItem({ 
   short, 
@@ -103,6 +139,9 @@ function ReelItem({
   hasNext,
   currentIndex,
   totalCount,
+  isLoadingMore,
+  isMobile,
+  onOpenCreateDialog,
 }: { 
   short: Short;
   isActive: boolean;
@@ -115,13 +154,17 @@ function ReelItem({
   hasNext: boolean;
   currentIndex: number;
   totalCount: number;
+  isLoadingMore?: boolean;
+  isMobile?: boolean;
+  onOpenCreateDialog?: () => void;
 }) {
   const { toast } = useToast();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isMuted, setIsMuted] = useState(true);
+  const [isMuted, setIsMuted] = useState(false); // Sound ON by default
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [commentInput, setCommentInput] = useState("");
+  const [commentsOpen, setCommentsOpen] = useState(false); // For mobile comments sheet
   
   const isOwnShort = currentUser?.id === short.userId;
 
@@ -216,10 +259,298 @@ function ReelItem({
   const dislikesCount = enrichedData?.dislikesCount ?? 0;
   const userReaction = enrichedData?.userReaction ?? null;
 
+  // Comments list component (shared between mobile and desktop)
+  const CommentsContent = () => (
+    <>
+      <ScrollArea className="flex-1">
+        <div className="p-3 space-y-3">
+          {commentsLoading ? (
+            <>
+              <div className="flex gap-2">
+                <Skeleton className="w-8 h-8 rounded-full" />
+                <div className="flex-1 space-y-1">
+                  <Skeleton className="h-3 w-20" />
+                  <Skeleton className="h-4 w-full" />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Skeleton className="w-8 h-8 rounded-full" />
+                <div className="flex-1 space-y-1">
+                  <Skeleton className="h-3 w-20" />
+                  <Skeleton className="h-4 w-full" />
+                </div>
+              </div>
+            </>
+          ) : comments.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              {t("reals.noComments")}
+            </p>
+          ) : (
+            comments.map((comment) => (
+              <div key={comment.id} className="flex gap-2">
+                <Link href={`/profile/${comment.user.id}`}>
+                  <Avatar className="w-8 h-8">
+                    <AvatarImage src={comment.user.avatarUrl || undefined} />
+                    <AvatarFallback className="bg-primary/10 text-primary text-xs">
+                      {getInitials(comment.user.fullName || comment.user.name || "")}
+                    </AvatarFallback>
+                  </Avatar>
+                </Link>
+                <div className="flex-1 min-w-0">
+                  <div className="bg-muted rounded-xl px-3 py-2">
+                    <Link href={`/profile/${comment.user.id}`}>
+                      <p className="font-medium text-xs hover:underline">
+                        {comment.user.fullName || comment.user.name}
+                      </p>
+                    </Link>
+                    <p className="text-sm">{comment.content}</p>
+                  </div>
+                  <span className="text-[10px] text-muted-foreground mt-0.5 block px-1">
+                    {formatTimeAgo(comment.createdAt, t)}
+                  </span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </ScrollArea>
+      
+      {/* Comment Input */}
+      {currentUser ? (
+        <div className="p-3 border-t flex gap-2">
+          <Input
+            placeholder={t("reals.addComment")}
+            value={commentInput}
+            onChange={(e) => setCommentInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleCommentSubmit();
+              }
+            }}
+            disabled={commentMutation.isPending}
+            className="flex-1 text-sm"
+          />
+          <Button
+            size="icon"
+            onClick={handleCommentSubmit}
+            disabled={!commentInput.trim() || commentMutation.isPending}
+          >
+            <Send className="w-4 h-4" />
+          </Button>
+        </div>
+      ) : (
+        <div className="p-3 border-t text-center text-sm text-muted-foreground">
+          {t("auth.signIn")} {t("reals.addComment").toLowerCase()}
+        </div>
+      )}
+    </>
+  );
+
+  // Mobile Layout - Full-screen TikTok-style
+  if (isMobile) {
+    return (
+      <div className="h-[90vh] w-full relative bg-black overflow-hidden">
+        {/* Full-screen Video */}
+        <video
+          ref={videoRef}
+          src={short.videoUrl}
+          poster={short.thumbnailUrl || undefined}
+          className="absolute inset-0 w-full h-full object-cover"
+          loop
+          playsInline
+          muted={isMuted}
+          onClick={handlePlayToggle}
+        />
+        
+        {/* Gradient overlay for better text visibility */}
+        <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/60 pointer-events-none" />
+        
+        {/* Play/Pause overlay */}
+        {!isPlaying && (
+          <button
+            onClick={handlePlayToggle}
+            className="absolute inset-0 flex items-center justify-center z-10"
+          >
+            <div className="w-20 h-20 rounded-full bg-black/40 flex items-center justify-center backdrop-blur-sm">
+              <Play className="w-10 h-10 text-white ml-1" />
+            </div>
+          </button>
+        )}
+        
+        {/* Top bar - Index and menu */}
+        <div className="absolute top-4 left-4 right-4 z-20 flex items-center justify-between" data-no-swipe>
+          <div className="bg-black/50 text-white text-xs font-medium px-2.5 py-1 rounded-full backdrop-blur-sm flex items-center gap-1.5">
+            {currentIndex + 1} / {totalCount}
+            {isLoadingMore && <Loader2 className="w-3 h-3 animate-spin" />}
+          </div>
+          
+          {isOwnShort && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-9 w-9 bg-black/50 hover:bg-black/70 text-white rounded-full">
+                  <MoreHorizontal className="w-5 h-5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => setDeleteDialogOpen(true)}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  {t("common.delete")}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+        
+        {/* Right side actions - TikTok style */}
+        <div className="absolute right-3 bottom-32 z-20 flex flex-col items-center gap-5" data-no-swipe>
+          {/* Like button */}
+          <button
+            onClick={() => currentUser && reactMutation.mutate('like')}
+            disabled={!currentUser || reactMutation.isPending}
+            className="flex flex-col items-center gap-1"
+          >
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${
+              userReaction === 'like' ? 'bg-primary text-white' : 'bg-black/50 text-white hover:bg-black/70'
+            }`}>
+              <ThumbsUp className={`w-6 h-6 ${userReaction === 'like' ? 'fill-current' : ''}`} />
+            </div>
+            <span className="text-white text-xs font-medium drop-shadow-lg">{likesCount}</span>
+          </button>
+          
+          {/* Dislike button */}
+          <button
+            onClick={() => currentUser && reactMutation.mutate('dislike')}
+            disabled={!currentUser || reactMutation.isPending}
+            className="flex flex-col items-center gap-1"
+          >
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${
+              userReaction === 'dislike' ? 'bg-destructive text-white' : 'bg-black/50 text-white hover:bg-black/70'
+            }`}>
+              <ThumbsDown className={`w-6 h-6 ${userReaction === 'dislike' ? 'fill-current' : ''}`} />
+            </div>
+            <span className="text-white text-xs font-medium drop-shadow-lg">{dislikesCount}</span>
+          </button>
+          
+          {/* Comments button */}
+          <button
+            onClick={() => setCommentsOpen(true)}
+            className="flex flex-col items-center gap-1"
+          >
+            <div className="w-12 h-12 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition-colors">
+              <MessageCircle className="w-6 h-6" />
+            </div>
+            <span className="text-white text-xs font-medium drop-shadow-lg">{comments.length}</span>
+          </button>
+          
+          {/* Add REEL button - only on mobile, under comments */}
+          {currentUser && onOpenCreateDialog && (
+            <button
+              onClick={onOpenCreateDialog}
+              className="flex flex-col items-center gap-1"
+            >
+              <div className="w-12 h-12 rounded-full bg-primary text-white flex items-center justify-center hover:bg-primary/90 transition-colors">
+                <Plus className="w-6 h-6" />
+              </div>
+            </button>
+          )}
+          
+          {/* Mute/Unmute */}
+          <button
+            onClick={handleMuteToggle}
+            className="flex flex-col items-center gap-1"
+          >
+            <div className="w-12 h-12 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition-colors">
+              {isMuted ? <VolumeX className="w-6 h-6" /> : <Volume2 className="w-6 h-6" />}
+            </div>
+          </button>
+        </div>
+        
+        {/* Bottom left - Creator info */}
+        <div className="absolute bottom-6 left-4 right-20 z-20 text-white">
+          <Link href={`/profile/${short.user.id}`}>
+            <div className="flex items-center gap-3 mb-2">
+              <Avatar className="w-11 h-11 border-2 border-white">
+                <AvatarImage src={short.user.avatarUrl || undefined} />
+                <AvatarFallback className="bg-primary text-primary-foreground text-sm">
+                  {getInitials(short.user.fullName || short.user.name || "")}
+                </AvatarFallback>
+              </Avatar>
+              <div>
+                <p className="font-bold text-sm drop-shadow-lg">
+                  {short.user.fullName || short.user.name}
+                </p>
+                <p className="text-xs opacity-90 drop-shadow-lg">
+                  {formatTimeAgo(short.createdAt, t)}
+                </p>
+              </div>
+            </div>
+          </Link>
+          {short.title && (
+            <p className="text-sm font-medium drop-shadow-lg line-clamp-2">
+              {short.title}
+            </p>
+          )}
+          {short.description && (
+            <p className="text-xs opacity-90 drop-shadow-lg mt-1 line-clamp-2">
+              {short.description}
+            </p>
+          )}
+          <div className="flex items-center gap-2 mt-2 text-xs opacity-80">
+            <Eye className="w-3.5 h-3.5" />
+            <span>{short.viewCount || 0} views</span>
+          </div>
+        </div>
+        
+        {/* Mobile Comments Sheet */}
+        <Sheet open={commentsOpen} onOpenChange={setCommentsOpen}>
+          <SheetContent side="bottom" className="h-[70vh] rounded-t-2xl">
+            <SheetHeader className="pb-2 border-b">
+              <SheetTitle className="text-center">
+                {t("posts.comments")} ({comments.length})
+              </SheetTitle>
+            </SheetHeader>
+            <div className="flex flex-col h-[calc(70vh-4rem)]">
+              <CommentsContent />
+            </div>
+          </SheetContent>
+        </Sheet>
+        
+        {/* Delete Dialog */}
+        <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{t("reals.deleteShort")}</DialogTitle>
+              <DialogDescription>{t("reals.deleteConfirm")}</DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+                {t("common.cancel")}
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  onDelete(short.id);
+                  setDeleteDialogOpen(false);
+                }}
+              >
+                {t("common.delete")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    );
+  }
+
+  // Desktop Layout - Side-by-side video and comments
   return (
     <div className="h-full w-full flex flex-col lg:flex-row overflow-hidden">
-      {/* Video Section - takes priority, fixed height on mobile */}
-      <div className="relative flex-shrink-0 lg:flex-1 bg-black flex items-center justify-center h-[60vh] lg:h-full">
+      {/* Video Section */}
+      <div className="relative flex-1 bg-black flex items-center justify-center">
         <video
           ref={videoRef}
           src={short.videoUrl}
@@ -231,9 +562,10 @@ function ReelItem({
           onClick={handlePlayToggle}
         />
         
-        {/* Index indicator - on video */}
-        <div className="absolute top-4 left-4 z-20 bg-black/60 text-white text-sm font-medium px-3 py-1.5 rounded-full backdrop-blur-sm">
+        {/* Index indicator */}
+        <div className="absolute top-4 left-4 z-20 bg-black/60 text-white text-sm font-medium px-3 py-1.5 rounded-full backdrop-blur-sm flex items-center gap-2">
           {currentIndex + 1} / {totalCount}
+          {isLoadingMore && <Loader2 className="w-3 h-3 animate-spin" />}
         </div>
         
         {/* Play/Pause overlay */}
@@ -335,8 +667,8 @@ function ReelItem({
         </div>
       </div>
       
-      {/* Comments Section - always visible, fixed height to prevent shrinking video */}
-      <div className="w-full lg:w-80 flex flex-col bg-background border-t lg:border-t-0 lg:border-l h-[40vh] lg:h-full flex-shrink-0 overflow-hidden">
+      {/* Comments Section - Desktop */}
+      <div className="w-80 flex flex-col bg-background border-l h-full">
         {/* Actions */}
         <div className="p-3 border-b flex items-center gap-2">
           <Button
@@ -367,89 +699,7 @@ function ReelItem({
           </div>
         </div>
         
-        {/* Comments List */}
-        <ScrollArea className="flex-1">
-          <div className="p-3 space-y-3">
-            {commentsLoading ? (
-              <>
-                <div className="flex gap-2">
-                  <Skeleton className="w-8 h-8 rounded-full" />
-                  <div className="flex-1 space-y-1">
-                    <Skeleton className="h-3 w-20" />
-                    <Skeleton className="h-4 w-full" />
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Skeleton className="w-8 h-8 rounded-full" />
-                  <div className="flex-1 space-y-1">
-                    <Skeleton className="h-3 w-20" />
-                    <Skeleton className="h-4 w-full" />
-                  </div>
-                </div>
-              </>
-            ) : comments.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                {t("reals.noComments")}
-              </p>
-            ) : (
-              comments.map((comment) => (
-                <div key={comment.id} className="flex gap-2">
-                  <Link href={`/profile/${comment.user.id}`}>
-                    <Avatar className="w-8 h-8">
-                      <AvatarImage src={comment.user.avatarUrl || undefined} />
-                      <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                        {getInitials(comment.user.fullName || comment.user.name || "")}
-                      </AvatarFallback>
-                    </Avatar>
-                  </Link>
-                  <div className="flex-1 min-w-0">
-                    <div className="bg-muted rounded-xl px-3 py-2">
-                      <Link href={`/profile/${comment.user.id}`}>
-                        <p className="font-medium text-xs hover:underline">
-                          {comment.user.fullName || comment.user.name}
-                        </p>
-                      </Link>
-                      <p className="text-sm">{comment.content}</p>
-                    </div>
-                    <span className="text-[10px] text-muted-foreground mt-0.5 block px-1">
-                      {formatTimeAgo(comment.createdAt, t)}
-                    </span>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </ScrollArea>
-        
-        {/* Comment Input - always visible */}
-        {currentUser ? (
-          <div className="p-3 border-t flex gap-2">
-            <Input
-              placeholder={t("reals.addComment")}
-              value={commentInput}
-              onChange={(e) => setCommentInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleCommentSubmit();
-                }
-              }}
-              disabled={commentMutation.isPending}
-              className="flex-1 text-sm"
-            />
-            <Button
-              size="icon"
-              onClick={handleCommentSubmit}
-              disabled={!commentInput.trim() || commentMutation.isPending}
-            >
-              <Send className="w-4 h-4" />
-            </Button>
-          </div>
-        ) : (
-          <div className="p-3 border-t text-center text-sm text-muted-foreground">
-            {t("auth.signIn")} {t("reals.addComment").toLowerCase()}
-          </div>
-        )}
+        <CommentsContent />
       </div>
       
       {/* Delete Dialog */}
@@ -479,13 +729,28 @@ function ReelItem({
   );
 }
 
+// Paginated response type
+interface PaginatedShortsResponse {
+  shorts: Short[];
+  total: number;
+  hasMore: boolean;
+  offset: number;
+  limit: number;
+}
+
 export default function RealsPage() {
   const { t } = useI18n();
   const { user: currentUser } = useAuth();
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const searchString = useSearch();
+  
+  // Touch handling refs
+  const touchStartY = useRef<number>(0);
+  const touchEndY = useRef<number>(0);
+  const isSwiping = useRef<boolean>(false);
   
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [title, setTitle] = useState("");
@@ -495,11 +760,43 @@ export default function RealsPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [initialIdSet, setInitialIdSet] = useState(false);
+  const [direction, setDirection] = useState(0); // Track scroll direction for animation
+  const [hasInteracted, setHasInteracted] = useState(false); // Only animate after user interaction
 
-  // Fetch shorts
-  const { data: shorts = [], isLoading } = useQuery<Short[]>({
-    queryKey: ["/api/shorts"],
+  // Fetch shorts with infinite query for lazy loading
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+  } = useInfiniteQuery<PaginatedShortsResponse>({
+    queryKey: ["/api/shorts", "paginated"],
+    queryFn: async ({ pageParam = 0 }) => {
+      const res = await fetch(
+        `/api/shorts?limit=${PAGE_SIZE}&offset=${pageParam}&paginated=true`,
+        { credentials: "include" }
+      );
+      if (!res.ok) throw new Error("Failed to fetch shorts");
+      return res.json();
+    },
+    getNextPageParam: (lastPage) => {
+      if (lastPage.hasMore) {
+        return lastPage.offset + lastPage.limit;
+      }
+      return undefined;
+    },
+    initialPageParam: 0,
   });
+
+  // Flatten all pages into a single array of shorts
+  const shorts = useMemo(() => {
+    if (!data?.pages) return [];
+    return data.pages.flatMap((page) => page.shorts);
+  }, [data]);
+
+  // Get total count from the first page
+  const totalCount = data?.pages[0]?.total ?? shorts.length;
 
   // Set initial index from query param when shorts are loaded
   useEffect(() => {
@@ -516,6 +813,16 @@ export default function RealsPage() {
     }
   }, [shorts, searchString, initialIdSet]);
 
+  // Prefetch more shorts when approaching the end of loaded content
+  useEffect(() => {
+    const remainingItems = shorts.length - currentIndex - 1;
+    const shouldPrefetch = remainingItems <= 2 && hasNextPage && !isFetchingNextPage;
+    
+    if (shouldPrefetch) {
+      fetchNextPage();
+    }
+  }, [currentIndex, shorts.length, hasNextPage, isFetchingNextPage, fetchNextPage]);
+
   // Create short mutation
   const createShortMutation = useMutation({
     mutationFn: async () => {
@@ -526,6 +833,8 @@ export default function RealsPage() {
       const formData = new FormData();
       formData.append("video", videoFile);
       
+      console.log("Uploading video:", videoFile.name, "Size:", videoFile.size);
+      
       const uploadRes = await fetch("/api/upload/short-video", {
         method: "POST",
         credentials: "include",
@@ -533,10 +842,13 @@ export default function RealsPage() {
       });
       
       if (!uploadRes.ok) {
-        throw new Error("Failed to upload video");
+        const errorData = await uploadRes.json().catch(() => ({}));
+        console.error("Video upload failed:", uploadRes.status, errorData);
+        throw new Error(errorData.error || errorData.details || "Failed to upload video");
       }
       
       const uploadData = await uploadRes.json();
+      console.log("Video uploaded successfully:", uploadData);
       
       return apiRequest("POST", "/api/shorts", {
         title: title.trim() || null,
@@ -549,10 +861,15 @@ export default function RealsPage() {
       toast({ title: t("reals.shortCreated") });
       setCreateDialogOpen(false);
       resetForm();
-      queryClient.invalidateQueries({ queryKey: ["/api/shorts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/shorts", "paginated"] });
     },
-    onError: () => {
-      toast({ title: t("errors.general"), variant: "destructive" });
+    onError: (error: Error) => {
+      console.error("Create short error:", error);
+      toast({ 
+        title: t("errors.uploadFailed"), 
+        description: error.message,
+        variant: "destructive" 
+      });
     },
     onSettled: () => {
       setIsUploading(false);
@@ -566,7 +883,7 @@ export default function RealsPage() {
     },
     onSuccess: () => {
       toast({ title: t("reals.shortDeleted") });
-      queryClient.invalidateQueries({ queryKey: ["/api/shorts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/shorts", "paginated"] });
       // Adjust index if needed
       if (currentIndex >= shorts.length - 1) {
         setCurrentIndex(Math.max(0, shorts.length - 2));
@@ -619,15 +936,27 @@ export default function RealsPage() {
 
   const goToPrev = useCallback(() => {
     if (currentIndex > 0) {
+      setHasInteracted(true);
+      setDirection(-1);
       setCurrentIndex(currentIndex - 1);
     }
   }, [currentIndex]);
 
   const goToNext = useCallback(() => {
+    // Allow navigation if there are more loaded shorts OR if we can load more
     if (currentIndex < shorts.length - 1) {
+      setHasInteracted(true);
+      setDirection(1);
       setCurrentIndex(currentIndex + 1);
+    } else if (hasNextPage && !isFetchingNextPage) {
+      // Trigger load more and navigate when ready
+      setHasInteracted(true);
+      setDirection(1);
+      fetchNextPage().then(() => {
+        setCurrentIndex(currentIndex + 1);
+      });
     }
-  }, [currentIndex, shorts.length]);
+  }, [currentIndex, shorts.length, hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   // Handle scroll/wheel navigation
   useEffect(() => {
@@ -669,6 +998,99 @@ export default function RealsPage() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [goToPrev, goToNext]);
+
+  // Touch swipe handling for mobile
+  useEffect(() => {
+    if (!isMobile) return;
+    
+    const container = containerRef.current;
+    if (!container) return;
+
+    const minSwipeDistance = 50; // Minimum distance for a swipe
+    let lastSwipeTime = 0;
+    const swipeThrottle = 400; // ms between swipe navigations
+
+    // Check if the touch target is an interactive element that should block swipe
+    const isInteractiveElement = (target: EventTarget | null): boolean => {
+      if (!target || !(target instanceof Element)) return false;
+      
+      // Check if target or any parent is an interactive element
+      let element: Element | null = target;
+      while (element) {
+        // Check for buttons, links, inputs, and elements with data-no-swipe attribute
+        if (
+          element.tagName === 'BUTTON' ||
+          element.tagName === 'A' ||
+          element.tagName === 'INPUT' ||
+          element.tagName === 'TEXTAREA' ||
+          element.hasAttribute('data-no-swipe') ||
+          element.closest('button') ||
+          element.closest('[data-no-swipe]') ||
+          element.closest('[role="button"]') ||
+          // Also check for the right-side actions panel
+          element.closest('.absolute.right-3')
+        ) {
+          return true;
+        }
+        element = element.parentElement;
+      }
+      return false;
+    };
+
+    const handleTouchStart = (e: TouchEvent) => {
+      // Don't start swipe if touching an interactive element
+      if (isInteractiveElement(e.target)) {
+        isSwiping.current = false;
+        return;
+      }
+      
+      touchStartY.current = e.touches[0].clientY;
+      isSwiping.current = true;
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!isSwiping.current) return;
+      touchEndY.current = e.touches[0].clientY;
+      
+      // Prevent default scroll behavior only when swiping
+      e.preventDefault();
+    };
+
+    const handleTouchEnd = () => {
+      if (!isSwiping.current) return;
+      isSwiping.current = false;
+      
+      const now = Date.now();
+      if (now - lastSwipeTime < swipeThrottle) return;
+      
+      const swipeDistance = touchStartY.current - touchEndY.current;
+      
+      if (Math.abs(swipeDistance) >= minSwipeDistance) {
+        lastSwipeTime = now;
+        if (swipeDistance > 0) {
+          // Swiped up - go to next
+          goToNext();
+        } else {
+          // Swiped down - go to previous
+          goToPrev();
+        }
+      }
+      
+      // Reset
+      touchStartY.current = 0;
+      touchEndY.current = 0;
+    };
+
+    container.addEventListener('touchstart', handleTouchStart, { passive: true });
+    container.addEventListener('touchmove', handleTouchMove, { passive: false });
+    container.addEventListener('touchend', handleTouchEnd, { passive: true });
+
+    return () => {
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [isMobile, goToPrev, goToNext]);
 
   // Loading state
   if (isLoading) {
@@ -758,21 +1180,23 @@ export default function RealsPage() {
 
   return (
     <>
-      {/* Create button - fixed top right, above everything (z-[100]) */}
+      {/* Create button - fixed position, only on desktop (mobile has it in the side actions) */}
       {currentUser && (
         <Dialog open={createDialogOpen} onOpenChange={(open) => {
           setCreateDialogOpen(open);
           if (!open) resetForm();
         }}>
-          <DialogTrigger asChild>
-            <Button 
-              className="fixed -top-3  z-[100] gap-2 shadow-xl bg-primary hover:bg-primary/90"
-              size="default"
-            >
-              <Plus className="w-5 h-5" />
-              <span>{t("reals.createShort")}</span>
-            </Button>
-          </DialogTrigger>
+          {!isMobile && (
+            <DialogTrigger asChild>
+              <Button 
+                className="fixed z-[100] gap-2 shadow-xl bg-primary hover:bg-primary/90 -top-3 right-4"
+                size="default"
+              >
+                <Plus className="w-5 h-5" />
+                <span>{t("reals.createShort")}</span>
+              </Button>
+            </DialogTrigger>
+          )}
           <DialogContent className="sm:max-w-md z-[70]">
             <DialogHeader>
               <DialogTitle>{t("reals.createShort")}</DialogTitle>
@@ -815,22 +1239,41 @@ export default function RealsPage() {
 
       <div 
         ref={containerRef}
-        className="h-[calc(100vh-8rem)] overflow-hidden relative"
+        className={`overflow-hidden relative ${
+          isMobile 
+            ? 'h-[100dvh] fixed inset-0 z-40' 
+            : 'h-[calc(100vh-8rem)]'
+        }`}
       >
-        {/* Current REAL */}
-        <ReelItem
-          short={currentShort}
-          isActive={true}
-          currentUser={currentUser}
-          t={t}
-          onDelete={(id) => deleteShortMutation.mutate(id)}
-          onPrev={goToPrev}
-          onNext={goToNext}
-          hasPrev={currentIndex > 0}
-          hasNext={currentIndex < shorts.length - 1}
-          currentIndex={currentIndex}
-          totalCount={shorts.length}
-        />
+        {/* Animated REEL Container - no mode="wait" so both items visible during transition */}
+        <AnimatePresence initial={false} custom={direction}>
+          <motion.div
+            key={currentShort.id}
+            custom={direction}
+            variants={hasInteracted ? reelVariants : undefined}
+            initial={hasInteracted ? "enter" : false}
+            animate="center"
+            exit={hasInteracted ? "exit" : undefined}
+            className="absolute inset-0"
+          >
+            <ReelItem
+              short={currentShort}
+              isActive={true}
+              currentUser={currentUser}
+              t={t}
+              onDelete={(id) => deleteShortMutation.mutate(id)}
+              onPrev={goToPrev}
+              onNext={goToNext}
+              hasPrev={currentIndex > 0}
+              hasNext={currentIndex < shorts.length - 1 || hasNextPage}
+              currentIndex={currentIndex}
+              totalCount={totalCount}
+              isLoadingMore={isFetchingNextPage}
+              isMobile={isMobile}
+              onOpenCreateDialog={isMobile ? () => setCreateDialogOpen(true) : undefined}
+            />
+          </motion.div>
+        </AnimatePresence>
       </div>
     </>
   );

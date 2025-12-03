@@ -69,8 +69,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+    onSuccess: async () => {
+      // Invalidate and refetch auth state before returning
+      await queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      await refetch();
     },
   });
 
@@ -103,6 +105,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     async (credential: string): Promise<{ success: boolean; profileCompleted?: boolean }> => {
       try {
         const result = await googleLoginMutation.mutateAsync(credential);
+        // Wait a brief moment for React Query state to propagate
+        await new Promise(resolve => setTimeout(resolve, 100));
         return { success: true, profileCompleted: result.profileCompleted };
       } catch (error) {
         return { success: false };

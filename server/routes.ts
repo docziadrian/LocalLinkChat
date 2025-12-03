@@ -1245,14 +1245,30 @@ Language Instructions:
   // Serve short videos statically
   app.use("/short_videos", express.static(path.join(process.cwd(), "short_videos")));
 
-  // Get all shorts (with optional random selection)
+  // Get all shorts (with optional pagination and random selection)
   app.get("/api/shorts", async (req: Request, res: Response) => {
     try {
       const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
+      const offset = req.query.offset ? parseInt(req.query.offset as string) : 0;
       const random = req.query.random === "true";
       
-      const shortsList = await storage.getShorts({ limit, random });
-      res.json(shortsList);
+      const result = await storage.getShorts({ limit, offset, random });
+      
+      // For backwards compatibility with existing code that expects an array,
+      // check if pagination params are explicitly used
+      if (req.query.offset !== undefined || req.query.paginated === "true") {
+        // Return paginated response
+        res.json({
+          shorts: result.shorts,
+          total: result.total,
+          hasMore: result.hasMore,
+          offset,
+          limit: limit ?? result.total,
+        });
+      } else {
+        // Return array for backwards compatibility (e.g., posts page promo section)
+        res.json(result.shorts);
+      }
     } catch (error) {
       console.error("Error fetching shorts:", error);
       res.status(500).json({ error: "Failed to get shorts" });

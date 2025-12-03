@@ -146,7 +146,7 @@ export interface IStorage {
   deletePostComment(id: string): Promise<void>;
 
   // Shorts
-  getShorts(options?: { limit?: number; random?: boolean }): Promise<Array<Short & { user: User }>>;
+  getShorts(options?: { limit?: number; offset?: number; random?: boolean }): Promise<{ shorts: Array<Short & { user: User }>; total: number; hasMore: boolean }>;
   getShort(id: string): Promise<Short | undefined>;
   getShortsByUserId(userId: string): Promise<Array<Short & { user: User }>>;
   createShort(short: InsertShort): Promise<Short>;
@@ -658,23 +658,33 @@ export class SQLiteStorage implements IStorage {
   }
 
   // Shorts
-  async getShorts(options?: { limit?: number; random?: boolean }): Promise<Array<Short & { user: User }>> {
+  async getShorts(options?: { limit?: number; offset?: number; random?: boolean }): Promise<{ shorts: Array<Short & { user: User }>; total: number; hasMore: boolean }> {
     let allShorts = await db.select().from(shorts).orderBy(desc(shorts.createdAt));
+    const total = allShorts.length;
     
     // Shuffle if random is requested
     if (options?.random) {
       allShorts = allShorts.sort(() => Math.random() - 0.5);
     }
     
-    // Apply limit
-    if (options?.limit) {
-      allShorts = allShorts.slice(0, options.limit);
+    // Apply offset and limit for pagination
+    const offset = options?.offset ?? 0;
+    const limit = options?.limit;
+    
+    if (limit) {
+      allShorts = allShorts.slice(offset, offset + limit);
+    } else if (offset > 0) {
+      allShorts = allShorts.slice(offset);
     }
     
-    return Promise.all(allShorts.map(async (short) => {
+    const hasMore = limit ? (offset + limit) < total : false;
+    
+    const enrichedShorts = await Promise.all(allShorts.map(async (short) => {
       const user = await this.getUser(short.userId);
       return { ...short, user: user! };
     }));
+    
+    return { shorts: enrichedShorts, total, hasMore };
   }
 
   async getShort(id: string): Promise<Short | undefined> {

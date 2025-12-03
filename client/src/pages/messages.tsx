@@ -1,7 +1,8 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useOpenChat } from "@/components/chat-tray";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -39,8 +40,10 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Send, ArrowLeft, MessageSquare, Users, ExternalLink, MoreVertical, UserX, ImagePlus, X, Trash2, Plus, LogOut, UserPlus, Smile, Check, CheckCheck, Image as ImageIcon } from "lucide-react";
+import { ImageLightbox, useLightbox } from "@/components/image-lightbox";
 import { Link } from "wouter";
 import { CreateGroupDialog } from "@/components/create-group-dialog";
+import { AddGroupMembersDialog } from "@/components/add-group-members-dialog";
 import type { User, DirectMessage, Connection, Group, GroupMember, GroupMessage, MessageReaction, MessageReadReceipt } from "@shared/schema";
 
 // Supported emoji reactions
@@ -57,7 +60,7 @@ function GifPicker({ onSelect, t }: { onSelect: (gifUrl: string) => void; t: (ke
   const fetchGifs = async (query: string = "") => {
     setLoading(true);
     try {
-      const apiKey = "dc6zaTOxFJmzC"; // GIPHY public beta key
+      const apiKey = "1pXpfajboP7Ask8g0gsXvbFCr3zUemb4"; // GIPHY public beta key
       const endpoint = query 
         ? `https://api.giphy.com/v1/gifs/search?api_key=${apiKey}&q=${encodeURIComponent(query)}&limit=20&rating=g`
         : `https://api.giphy.com/v1/gifs/trending?api_key=${apiKey}&limit=20&rating=g`;
@@ -148,8 +151,15 @@ function EmojiReactionPicker({
   onReact: (emoji: string) => void;
   existingReaction?: string;
 }) {
+  const [isOpen, setIsOpen] = useState(false);
+  
+  const handleReact = (emoji: string) => {
+    onReact(emoji);
+    setIsOpen(false);
+  };
+  
   return (
-    <Popover>
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
         <button className="p-1 rounded hover:bg-muted/50 transition-colors opacity-0 group-hover:opacity-100">
           <Smile className="w-4 h-4 text-muted-foreground" />
@@ -160,7 +170,7 @@ function EmojiReactionPicker({
           {EMOJI_REACTIONS.map((emoji) => (
             <button
               key={emoji}
-              onClick={() => onReact(emoji)}
+              onClick={() => handleReact(emoji)}
               className={`text-xl p-1.5 rounded hover:bg-muted transition-colors ${
                 existingReaction === emoji ? 'bg-primary/20' : ''
               }`}
@@ -225,8 +235,8 @@ function ReadReceiptIndicator({
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
-            <span className="inline-flex items-center gap-1 text-[10px] text-blue-500">
-              <CheckCheck className="w-3 h-3" />
+            <span className="inline-flex items-center justify-center gap-1 text-xs text-green-500 bg-black/90 rounded-full p-0.5">
+              <CheckCheck className="w-4 h-4" />
             </span>
           </TooltipTrigger>
           <TooltipContent>
@@ -251,8 +261,8 @@ function ReadReceiptIndicator({
   }
   
   return (
-    <span className={`inline-flex items-center text-[10px] ${isRead ? 'text-blue-500' : 'text-muted-foreground'}`}>
-      {isRead ? <CheckCheck className="w-3 h-3" /> : <Check className="w-3 h-3" />}
+    <span className={`inline-flex items-center justify-center text-xs rounded-full p-0.5 ${isRead ? 'text-green-500 bg-black/90' : 'text-blue-500 bg-black/90'}`}>
+      {isRead ? <CheckCheck className="w-4 h-4" /> : <Check className="w-4 h-4" />}
     </span>
   );
 }
@@ -322,31 +332,39 @@ function ConversationSkeleton() {
   );
 }
 
-// Resize image to 100x100
+// Resize image to max 800px dimension while maintaining aspect ratio (for higher quality zoom)
 async function resizeImage(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       const img = new Image();
       img.onload = () => {
+        const maxDimension = 800;
+        let width = img.width;
+        let height = img.height;
+        
+        // Only resize if larger than max dimension
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+        
         const canvas = document.createElement("canvas");
-        canvas.width = 100;
-        canvas.height = 100;
+        canvas.width = width;
+        canvas.height = height;
         const ctx = canvas.getContext("2d");
         if (!ctx) {
           reject(new Error("Failed to get canvas context"));
           return;
         }
         
-        // Calculate scaling to cover 100x100 while maintaining aspect ratio
-        const scale = Math.max(100 / img.width, 100 / img.height);
-        const scaledWidth = img.width * scale;
-        const scaledHeight = img.height * scale;
-        const offsetX = (100 - scaledWidth) / 2;
-        const offsetY = (100 - scaledHeight) / 2;
-        
-        ctx.drawImage(img, offsetX, offsetY, scaledWidth, scaledHeight);
-        resolve(canvas.toDataURL("image/jpeg", 0.8));
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", 0.85));
       };
       img.onerror = () => reject(new Error("Failed to load image"));
       img.src = e.target?.result as string;
@@ -361,6 +379,13 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
   const { user: currentUser } = useAuth();
   const { toast } = useToast();
   const openChat = useOpenChat();
+  const isMobile = useIsMobile();
+  const { lightboxState, openLightbox, closeLightbox } = useLightbox();
+  
+  // Long press state for mobile message actions
+  const [longPressMessageId, setLongPressMessageId] = useState<string | null>(null);
+  const [longPressPosition, setLongPressPosition] = useState<{ x: number; y: number } | null>(null);
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [activeTab, setActiveTab] = useState<"direct" | "groups">("direct");
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
@@ -372,6 +397,7 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [messageToDelete, setMessageToDelete] = useState<string | null>(null);
+  const [addMembersDialogOpen, setAddMembersDialogOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLInputElement>(null);
@@ -563,9 +589,10 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
     },
   });
 
+  // Scroll to bottom when new messages arrive or typing indicator shows
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, groupMessages, typingUsers]);
 
   // Refetch messages periodically when a user is selected
   useEffect(() => {
@@ -718,6 +745,36 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
   // Desktop: show both side by side
   const showChat = (selectedUserId && selectedUser) || (selectedGroupId && selectedGroup);
 
+  // Long press handlers for mobile
+  const handleTouchStart = useCallback((e: React.TouchEvent, messageId: string, senderId: string) => {
+    if (!isMobile) return;
+    
+    const touch = e.touches[0];
+    longPressTimerRef.current = setTimeout(() => {
+      setLongPressMessageId(messageId);
+      setLongPressPosition({ x: touch.clientX, y: touch.clientY });
+    }, 500); // 500ms for long press
+  }, [isMobile]);
+
+  const handleTouchEnd = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  const handleTouchMove = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  const closeLongPressMenu = useCallback(() => {
+    setLongPressMessageId(null);
+    setLongPressPosition(null);
+  }, []);
+
   // Helper to render message content (with image and GIF support)
   const renderMessageContent = (content: string) => {
     // Check for GIF
@@ -730,7 +787,10 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
           <img 
             src={gifUrl} 
             alt={t("messages.gifSent")} 
-            className="max-w-[200px] rounded-lg mb-1"
+            className={`rounded-lg mb-1 cursor-pointer hover:opacity-90 transition-opacity ${
+              isMobile ? 'w-[50px] h-[50px] object-cover' : 'max-w-[200px]'
+            }`}
+            onClick={() => openLightbox(gifUrl, t("messages.gifSent"))}
           />
           {textContent && <p className="text-sm">{textContent}</p>}
         </div>
@@ -747,7 +807,11 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
           <img 
             src={imageData} 
             alt={t("messages.imageSent")} 
-            className="w-24 h-24 object-cover rounded-lg mb-1"
+            className={`rounded-lg mb-1 cursor-pointer hover:opacity-90 transition-opacity object-cover ${
+              isMobile ? 'w-[50px] h-[50px]' : 'max-w-[200px] max-h-[200px]'
+            }`}
+            onClick={() => openLightbox(imageData, t("messages.imageSent"))}
+            title={t("messages.clickToZoom")}
           />
           {textContent && <p className="text-sm">{textContent}</p>}
         </div>
@@ -1124,22 +1188,40 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
                 
                 {/* Group chat actions */}
                 {selectedGroup && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <MoreVertical className="w-4 h-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        className="text-destructive focus:text-destructive"
-                        onClick={() => setLeaveGroupDialogOpen(true)}
-                      >
-                        <LogOut className="w-4 h-4 mr-2" />
-                        {t("groups.leaveGroup")}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setAddMembersDialogOpen(true)}
+                      className="hidden sm:flex"
+                    >
+                      <UserPlus className="w-4 h-4 sm:mr-2" />
+                      <span className="hidden sm:inline">{t("groups.addMembers")}</span>
+                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <MoreVertical className="w-4 h-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={() => setAddMembersDialogOpen(true)}
+                          className="sm:hidden"
+                        >
+                          <UserPlus className="w-4 h-4 mr-2" />
+                          {t("groups.addMembers")}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onClick={() => setLeaveGroupDialogOpen(true)}
+                        >
+                          <LogOut className="w-4 h-4 mr-2" />
+                          {t("groups.leaveGroup")}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </>
                 )}
               </div>
             </div>
@@ -1181,6 +1263,9 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
                               ? "bg-primary text-primary-foreground rounded-br-md"
                               : "bg-muted rounded-bl-md"
                           }`}
+                          onTouchStart={(e) => handleTouchStart(e, msg.id, msg.senderId)}
+                          onTouchEnd={handleTouchEnd}
+                          onTouchMove={handleTouchMove}
                         >
                           {renderMessageContent(msg.content)}
                           <div className="flex items-center justify-between gap-2 mt-1">
@@ -1198,26 +1283,28 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
                             )}
                           </div>
                           
-                          {/* Action buttons (delete + reaction) */}
-                          <div className={`absolute ${msg.senderId === currentUser?.id ? '-left-16' : '-right-16'} top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity`}>
-                            {msg.senderId === currentUser?.id && (
-                              <button
-                                onClick={() => {
-                                  setMessageToDelete(msg.id);
-                                  setDeleteDialogOpen(true);
-                                }}
-                                className="p-1 hover:bg-destructive/10 rounded"
-                                title={t("common.delete")}
-                              >
-                                <Trash2 className="w-4 h-4 text-destructive" />
-                              </button>
-                            )}
-                            <EmojiReactionPicker
-                              messageId={msg.id}
-                              messageType="direct"
-                              onReact={(emoji) => reactToMessageMutation.mutate({ messageId: msg.id, emoji, messageType: 'direct' })}
-                            />
-                          </div>
+                          {/* Action buttons (delete + reaction) - Hidden on mobile, shown via long press popup */}
+                          {!isMobile && (
+                            <div className={`absolute ${msg.senderId === currentUser?.id ? '-left-16' : '-right-16'} top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity`}>
+                              {msg.senderId === currentUser?.id && (
+                                <button
+                                  onClick={() => {
+                                    setMessageToDelete(msg.id);
+                                    setDeleteDialogOpen(true);
+                                  }}
+                                  className="p-1 hover:bg-destructive/10 rounded"
+                                  title={t("common.delete")}
+                                >
+                                  <Trash2 className="w-4 h-4 text-destructive" />
+                                </button>
+                              )}
+                              <EmojiReactionPicker
+                                messageId={msg.id}
+                                messageType="direct"
+                                onReact={(emoji) => reactToMessageMutation.mutate({ messageId: msg.id, emoji, messageType: 'direct' })}
+                              />
+                            </div>
+                          )}
                         </div>
                         
                         {/* Reactions display */}
@@ -1496,6 +1583,82 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
         connections={acceptedConnections}
         onGroupCreated={() => setActiveTab("groups")}
       />
+
+      {/* Add Members to Group Dialog */}
+      {selectedGroup && (
+        <AddGroupMembersDialog
+          isOpen={addMembersDialogOpen}
+          onClose={() => setAddMembersDialogOpen(false)}
+          groupId={selectedGroup.id}
+          groupName={selectedGroup.name}
+          connections={acceptedConnections}
+          onMembersAdded={() => {
+            refetchGroups();
+          }}
+        />
+      )}
+
+      {/* Image Lightbox for zooming images */}
+      <ImageLightbox
+        src={lightboxState.src}
+        alt={lightboxState.alt}
+        isOpen={lightboxState.isOpen}
+        onClose={closeLightbox}
+      />
+
+      {/* Mobile Long Press Popup for reactions and delete */}
+      {isMobile && longPressMessageId && longPressPosition && (
+        <>
+          {/* Backdrop */}
+          <div 
+            className="fixed inset-0 z-[60]" 
+            onClick={closeLongPressMenu}
+          />
+          {/* Popup */}
+          <div
+            className="fixed z-[70] bg-background border rounded-xl shadow-lg p-2 w-auto max-w-[90vw]"
+            style={{
+              left: Math.max(10, Math.min(longPressPosition.x - 140, window.innerWidth - 200)),
+              top: Math.max(10, Math.min(longPressPosition.y - 80, window.innerHeight - 200)),
+            }}
+          >
+            {/* Emoji reactions */}
+            <div className="flex gap-1 p-1.5 border-b">
+              {EMOJI_REACTIONS.map((emoji) => (
+                <button
+                  key={emoji}
+                  onClick={() => {
+                    reactToMessageMutation.mutate({ 
+                      messageId: longPressMessageId, 
+                      emoji, 
+                      messageType: selectedGroupId ? 'group' : 'direct' 
+                    });
+                    closeLongPressMenu();
+                  }}
+                  className="text-xl sm:text-2xl p-1.5 sm:p-2 rounded hover:bg-muted active:bg-muted transition-colors touch-manipulation"
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+            
+            {/* Delete option - only for own messages */}
+            {messages.find(m => m.id === longPressMessageId)?.senderId === currentUser?.id && (
+              <button
+                onClick={() => {
+                  setMessageToDelete(longPressMessageId);
+                  setDeleteDialogOpen(true);
+                  closeLongPressMenu();
+                }}
+                className="w-full flex items-center gap-2 p-2.5 sm:p-3 text-destructive hover:bg-destructive/10 active:bg-destructive/20 rounded-lg transition-colors touch-manipulation text-sm"
+              >
+                <Trash2 className="w-4 h-4 flex-shrink-0" />
+                <span className="truncate">{t("messages.deleteMessage")}</span>
+              </button>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

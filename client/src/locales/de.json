@@ -81,7 +81,7 @@
   "nav": {
     "dashboard": "Dashboard",
     "posts": "Beiträge",
-    "reals": "REALS",
+    "reels": "Kurzvideos",
     "discover": "Entdecken",
     "messages": "Nachrichten",
     "notifications": "Benachrichtigungen",
@@ -154,7 +154,8 @@
     "searchGifs": "GIFs suchen...",
     "trendingGifs": "Trending",
     "noGifsFound": "Keine GIFs gefunden",
-    "gifSent": "GIF"
+    "gifSent": "GIF",
+    "clickToZoom": "Klicken zum Vergrößern"
   },
   "notifications": {
     "title": "Benachrichtigungen",
@@ -312,9 +313,9 @@
     "createFirst": "Erstellen Sie Ihr erstes REAL",
     "invalidVideoType": "Ungültiges Videoformat. Verwenden Sie MP4, WebM oder MOV.",
     "videoTooLarge": "Video ist zu groß. Maximale Größe ist 100MB.",
-    "promoTitle": "Erstellen Sie REALS-Videos!",
-    "promoDescription": "Erstellen Sie REALS-Videos, um Ihr Unternehmen zu präsentieren und seine wichtigsten Momente hervorzuheben.",
-    "promoButton": "Zu REALS gehen",
+    "promoTitle": "Erstellen Sie Kurzvideos!",
+    "promoDescription": "Erstellen Sie Kurzvideos, um Ihr Unternehmen zu präsentieren und seine wichtigsten Momente hervorzuheben.",
+    "promoButton": "Videos ansehen",
     "creator": "Ersteller",
     "noComments": "Noch keine Kommentare",
     "addComment": "Kommentar hinzufügen...",
@@ -352,6 +353,14 @@
     "noGroupsDescription": "Erstellen Sie eine Gruppe, um mit mehreren Verbindungen gleichzeitig zu chatten",
     "groupChat": "Gruppenchat",
     "startGroupMessage": "Starten Sie einen Chat in {{name}}",
-    "typeGroupMessage": "Nachricht an die Gruppe eingeben..."
+    "typeGroupMessage": "Nachricht an die Gruppe eingeben...",
+    "addMembers": "Mitglieder hinzufügen",
+    "addMembersDescription": "Verbindungen zu {{name}} einladen",
+    "selectMembersToInvite": "Verbindungen zum Einladen auswählen",
+    "noMoreConnectionsToAdd": "Alle Ihre Verbindungen sind bereits Mitglieder dieser Gruppe",
+    "inviteMembers": "Einladen",
+    "memberSelected": "Mitglied ausgewählt",
+    "membersSelected": "Mitglieder ausgewählt",
+    "membersInvited": "{{count}} Einladung(en) gesendet"
   }
 }

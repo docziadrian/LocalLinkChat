@@ -7,8 +7,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import { I18nProvider, useI18n } from "@/lib/i18n";
 import { AuthProvider, useAuth } from "@/lib/auth";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { LiveChat } from "@/components/live-chat";
+import { LiveChat, type LiveChatRef } from "@/components/live-chat";
 import { ChatTray } from "@/components/chat-tray";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
@@ -28,7 +29,8 @@ import {
   User as UserIcon, 
   LogOut, 
   Settings,
-  Loader2
+  Loader2,
+  Headphones
 } from "lucide-react";
 import HomePage from "@/pages/home";
 import PostsPage from "@/pages/posts";
@@ -78,10 +80,13 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 function AppContent() {
   const { t } = useI18n();
   const { user, isAuthenticated, profileCompleted, logout, isLoading } = useAuth();
+  const isMobile = useIsMobile();
   const [, navigate] = useLocation();
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isConnected, setIsConnected] = useState(false);
+  const [supportChatFullscreen, setSupportChatFullscreen] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
+  const liveChatRef = useRef<LiveChatRef>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isUnmountedRef = useRef(false);
 
@@ -299,6 +304,16 @@ function AppContent() {
                     <Settings className="w-4 h-4 mr-2" />
                     {t("nav.settings")}
                   </DropdownMenuItem>
+                  {/* Support Chat - Mobile only */}
+                  {isMobile && (
+                    <DropdownMenuItem 
+                      onClick={() => setSupportChatFullscreen(true)}
+                      data-testid="menu-support"
+                    >
+                      <Headphones className="w-4 h-4 mr-2" />
+                      {t("chat.liveSupport")}
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem 
                     className="text-destructive cursor-pointer" 
@@ -336,11 +351,14 @@ function AppContent() {
 
       {/* Live Chat */}
       <LiveChat
+        ref={liveChatRef}
         messages={chatMessages}
         onSendMessage={handleSendMessage}
         isConnected={isConnected}
         currentUserId={user?.id || ""}
         currentUserName={user?.name || "User"}
+        isFullscreen={supportChatFullscreen}
+        onClose={() => setSupportChatFullscreen(false)}
       />
 
       {/* Chat Tray for direct messages */}

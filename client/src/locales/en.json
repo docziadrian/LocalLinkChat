@@ -81,7 +81,7 @@
   "nav": {
     "dashboard": "Dashboard",
     "posts": "Posts",
-    "reals": "REALS",
+    "reels": "Reels",
     "discover": "Discover",
     "messages": "Messages",
     "notifications": "Notifications",
@@ -154,7 +154,8 @@
     "searchGifs": "Search GIFs...",
     "trendingGifs": "Trending",
     "noGifsFound": "No GIFs found",
-    "gifSent": "GIF"
+    "gifSent": "GIF",
+    "clickToZoom": "Click to enlarge"
   },
   "notifications": {
     "title": "Notifications",
@@ -312,9 +313,9 @@
     "createFirst": "Create your first REAL",
     "invalidVideoType": "Invalid video format. Use MP4, WebM, or MOV.",
     "videoTooLarge": "Video is too large. Maximum size is 100MB.",
-    "promoTitle": "Create REALS videos!",
-    "promoDescription": "Create REALS videos to present your business and highlight its most important moments.",
-    "promoButton": "Go to REALS",
+    "promoTitle": "Create short videos!",
+    "promoDescription": "Create short videos to present your business and highlight its most important moments.",
+    "promoButton": "Watch Reels",
     "creator": "Creator",
     "noComments": "No comments yet",
     "addComment": "Add a comment...",
@@ -352,6 +353,14 @@
     "noGroupsDescription": "Create a group to chat with multiple connections at once",
     "groupChat": "Group Chat",
     "startGroupMessage": "Start chatting in {{name}}",
-    "typeGroupMessage": "Type a message to the group..."
+    "typeGroupMessage": "Type a message to the group...",
+    "addMembers": "Add Members",
+    "addMembersDescription": "Invite connections to join {{name}}",
+    "selectMembersToInvite": "Select connections to invite",
+    "noMoreConnectionsToAdd": "All your connections are already members of this group",
+    "inviteMembers": "Invite",
+    "memberSelected": "member selected",
+    "membersSelected": "members selected",
+    "membersInvited": "{{count}} invitation(s) sent"
   }
 }

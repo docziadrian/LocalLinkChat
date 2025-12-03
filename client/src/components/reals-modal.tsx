@@ -154,7 +154,7 @@ export function RealsModal({ isOpen, onClose, shorts, initialIndex }: RealsModal
       setCommentInput("");
       refetchComments();
       refetchEnriched();
-      toast({ title: t("reals.commentAdded") });
+      toast({ title: t("reels.commentAdded") });
     },
     onError: () => {
       toast({ title: t("errors.general"), variant: "destructive" });
@@ -337,7 +337,7 @@ export function RealsModal({ isOpen, onClose, shorts, initialIndex }: RealsModal
                       {currentShort.user.fullName || currentShort.user.name}
                     </p>
                     <p className="text-xs text-muted-foreground truncate">
-                      {currentShort.user.jobPosition || t("reals.creator")}
+                      {currentShort.user.jobPosition || t("reels.creator")}
                     </p>
                   </div>
                 </div>
@@ -404,7 +404,7 @@ export function RealsModal({ isOpen, onClose, shorts, initialIndex }: RealsModal
                       </>
                     ) : comments.length === 0 ? (
                       <p className="text-sm text-muted-foreground text-center py-4">
-                        {t("reals.noComments")}
+                        {t("reels.noComments")}
                       </p>
                     ) : (
                       comments.map((comment) => (
@@ -440,7 +440,7 @@ export function RealsModal({ isOpen, onClose, shorts, initialIndex }: RealsModal
                 {currentUser && (
                   <div className="p-2 border-t flex gap-2">
                     <Input
-                      placeholder={t("reals.addComment")}
+                      placeholder={t("reels.addComment")}
                       value={commentInput}
                       onChange={(e) => setCommentInput(e.target.value)}
                       onKeyDown={(e) => {
@@ -467,7 +467,7 @@ export function RealsModal({ isOpen, onClose, shorts, initialIndex }: RealsModal
             {/* Placeholder when comments hidden */}
             {!showComments && (
               <div className="flex-1 flex items-center justify-center text-muted-foreground">
-                <p className="text-sm">{t("reals.clickToShowComments")}</p>
+                <p className="text-sm">{t("reels.clickToShowComments")}</p>
               </div>
             )}
           </div>

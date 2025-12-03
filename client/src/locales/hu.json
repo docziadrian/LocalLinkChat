@@ -81,7 +81,7 @@
   "nav": {
     "dashboard": "Irányítópult",
     "posts": "Bejegyzések",
-    "reals": "REALS",
+    "reels": "Videók",
     "discover": "Felfedezés",
     "messages": "Üzenetek",
     "notifications": "Értesítések",
@@ -154,7 +154,8 @@
     "searchGifs": "GIF-ek keresése...",
     "trendingGifs": "Népszerű",
     "noGifsFound": "Nem található GIF",
-    "gifSent": "GIF"
+    "gifSent": "GIF",
+    "clickToZoom": "Kattints a nagyításhoz"
   },
   "notifications": {
     "title": "Értesítések",
@@ -312,9 +313,9 @@
     "createFirst": "Készítsd el az első REAL-od",
     "invalidVideoType": "Érvénytelen videó formátum. Használj MP4, WebM vagy MOV fájlt.",
     "videoTooLarge": "A videó túl nagy. Maximum méret 100MB.",
-    "promoTitle": "Készíts REALS videókat!",
-    "promoDescription": "A vállalkozásod bemutatásához és fontos pillanatok kiemeléséhez hozz létre REALS videókat.",
-    "promoButton": "Ugrás a REALS-hoz",
+    "promoTitle": "Készíts rövid videókat!",
+    "promoDescription": "A vállalkozásod bemutatásához és fontos pillanatok kiemeléséhez hozz létre rövid videókat.",
+    "promoButton": "Videók megtekintése",
     "creator": "Készítő",
     "noComments": "Még nincsenek hozzászólások",
     "addComment": "Írj hozzászólást...",
@@ -352,6 +353,14 @@
     "noGroupsDescription": "Hozz létre egy csoportot, hogy egyszerre több kapcsolattal cseveghess",
     "groupChat": "Csoportos csevegés",
     "startGroupMessage": "Kezdj csevegni itt: {{name}}",
-    "typeGroupMessage": "Írj üzenetet a csoportnak..."
+    "typeGroupMessage": "Írj üzenetet a csoportnak...",
+    "addMembers": "Tagok hozzáadása",
+    "addMembersDescription": "Hívj meg kapcsolatokat a(z) {{name}} csoportba",
+    "selectMembersToInvite": "Válaszd ki a meghívandó kapcsolatokat",
+    "noMoreConnectionsToAdd": "Minden kapcsolatod már tagja ennek a csoportnak",
+    "inviteMembers": "Meghívás",
+    "memberSelected": "tag kiválasztva",
+    "membersSelected": "tag kiválasztva",
+    "membersInvited": "{{count}} meghívó elküldve"
   }
 }

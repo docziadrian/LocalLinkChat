@@ -2,6 +2,7 @@ import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useI18n, languageNames, languageFlags, type SupportedLanguage } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   Sidebar,
   SidebarContent,
@@ -12,6 +13,7 @@ import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarFooter,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import {
   DropdownMenu,
@@ -38,6 +40,8 @@ export function AppSidebar() {
   const [location] = useLocation();
   const { t, language, setLanguage } = useI18n();
   const { isAuthenticated } = useAuth();
+  const isMobile = useIsMobile();
+  const { setOpenMobile } = useSidebar();
 
   // Notification count
   const { data: unreadNotifications } = useQuery<{ count: number }>({
@@ -56,6 +60,13 @@ export function AppSidebar() {
   const messageCount = unreadMessages?.count ?? 0;
   const notificationCount = unreadNotifications?.count ?? 0;
 
+  // Close mobile sidebar when navigating
+  const handleNavClick = () => {
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+  };
+
   return (
     <Sidebar>
       <SidebarHeader className="p-4">
@@ -72,62 +83,62 @@ export function AppSidebar() {
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupContent>
-            <SidebarMenu>
+            <SidebarMenu className={isMobile ? "gap-2" : "gap-1"}>
               {/* Dashboard */}
               <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={location === "/"}>
-                  <Link href="/" data-testid="nav-dashboard">
-                    <Home className="w-4 h-4" />
-                    <span>{t("nav.dashboard")}</span>
+                <SidebarMenuButton asChild isActive={location === "/"} size={isMobile ? "lg" : "default"}>
+                  <Link href="/" data-testid="nav-dashboard" onClick={handleNavClick}>
+                    <Home className={isMobile ? "w-5 h-5" : "w-4 h-4"} />
+                    <span className={isMobile ? "text-base" : ""}>{t("nav.dashboard")}</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
               {/* Posts */}
               <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={location === "/posts"}>
-                  <Link href="/posts" data-testid="nav-posts">
-                    <FileText className="w-4 h-4" />
-                    <span>{t("nav.posts")}</span>
+                <SidebarMenuButton asChild isActive={location === "/posts"} size={isMobile ? "lg" : "default"}>
+                  <Link href="/posts" data-testid="nav-posts" onClick={handleNavClick}>
+                    <FileText className={isMobile ? "w-5 h-5" : "w-4 h-4"} />
+                    <span className={isMobile ? "text-base" : ""}>{t("nav.posts")}</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
               {/* REALS */}
               <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={location === "/reals"}>
-                  <Link href="/reals" data-testid="nav-reals">
-                    <Video className="w-4 h-4" />
-                    <span>{t("nav.reals")}</span>
+                <SidebarMenuButton asChild isActive={location === "/reals"} size={isMobile ? "lg" : "default"}>
+                  <Link href="/reals" data-testid="nav-reals" onClick={handleNavClick}>
+                    <Video className={isMobile ? "w-5 h-5" : "w-4 h-4"} />
+                    <span className={isMobile ? "text-base" : ""}>{t("nav.reels")}</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
               {/* Discover */}
               <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={location === "/discover"}>
-                  <Link href="/discover" data-testid="nav-discover">
-                    <Users className="w-4 h-4" />
-                    <span>{t("nav.discover")}</span>
+                <SidebarMenuButton asChild isActive={location === "/discover"} size={isMobile ? "lg" : "default"}>
+                  <Link href="/discover" data-testid="nav-discover" onClick={handleNavClick}>
+                    <Users className={isMobile ? "w-5 h-5" : "w-4 h-4"} />
+                    <span className={isMobile ? "text-base" : ""}>{t("nav.discover")}</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
               {/* Messages */}
               <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={location === "/messages"}>
-                  <Link href="/messages" data-testid="nav-messages" className="relative">
+                <SidebarMenuButton asChild isActive={location === "/messages"} size={isMobile ? "lg" : "default"}>
+                  <Link href="/messages" data-testid="nav-messages" className="relative" onClick={handleNavClick}>
                     <div className="relative">
-                      <MessageSquare className="w-4 h-4" />
+                      <MessageSquare className={isMobile ? "w-5 h-5" : "w-4 h-4"} />
                       {messageCount > 0 && (
                         <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
                       )}
                     </div>
-                    <span>{t("nav.messages")}</span>
+                    <span className={isMobile ? "text-base" : ""}>{t("nav.messages")}</span>
                     {messageCount > 0 && (
                       <Badge 
                         variant="default"
-                        className="ml-auto h-5 min-w-5 flex items-center justify-center text-xs px-1.5"
+                        className={`ml-auto flex items-center justify-center text-xs px-1.5 ${isMobile ? "h-6 min-w-6" : "h-5 min-w-5"}`}
                       >
                         {messageCount > 99 ? "99+" : messageCount}
                       </Badge>
@@ -138,19 +149,19 @@ export function AppSidebar() {
 
               {/* Notifications */}
               <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={location === "/notifications"}>
-                  <Link href="/notifications" data-testid="nav-notifications" className="relative">
+                <SidebarMenuButton asChild isActive={location === "/notifications"} size={isMobile ? "lg" : "default"}>
+                  <Link href="/notifications" data-testid="nav-notifications" className="relative" onClick={handleNavClick}>
                     <div className="relative">
-                      <Bell className="w-4 h-4" />
+                      <Bell className={isMobile ? "w-5 h-5" : "w-4 h-4"} />
                       {notificationCount > 0 && (
                         <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
                       )}
                     </div>
-                    <span>{t("nav.notifications")}</span>
+                    <span className={isMobile ? "text-base" : ""}>{t("nav.notifications")}</span>
                     {notificationCount > 0 && (
                       <Badge 
                         variant="destructive"
-                        className="ml-auto h-5 min-w-5 flex items-center justify-center text-xs px-1.5"
+                        className={`ml-auto flex items-center justify-center text-xs px-1.5 ${isMobile ? "h-6 min-w-6" : "h-5 min-w-5"}`}
                       >
                         {notificationCount > 99 ? "99+" : notificationCount}
                       </Badge>
@@ -161,10 +172,10 @@ export function AppSidebar() {
 
               {/* Profile */}
               <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={location === "/profile"}>
-                  <Link href="/profile" data-testid="nav-profile">
-                    <User className="w-4 h-4" />
-                    <span>{t("nav.profile")}</span>
+                <SidebarMenuButton asChild isActive={location === "/profile"} size={isMobile ? "lg" : "default"}>
+                  <Link href="/profile" data-testid="nav-profile" onClick={handleNavClick}>
+                    <User className={isMobile ? "w-5 h-5" : "w-4 h-4"} />
+                    <span className={isMobile ? "text-base" : ""}>{t("nav.profile")}</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
