@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -8,11 +9,13 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { X, Minus, Send, ImagePlus, Check, CheckCheck, Smile } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { X, Minus, Send, ImagePlus, Check, CheckCheck, Smile, Trash2 } from "lucide-react";
 import { ImageLightbox, useLightbox } from "@/components/image-lightbox";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
-import type { User, DirectMessage } from "@shared/schema";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import type { User, DirectMessage, MessageReaction } from "@shared/schema";
 
 // Supported emoji reactions (same as messages.tsx)
 const EMOJI_REACTIONS = ["😂", "❤️", "👍", "😒", "😠"] as const;
@@ -94,6 +97,8 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
   const [selectedImages, setSelectedImages] = useState<Record<string, string>>({});
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [messageToDelete, setMessageToDelete] = useState<string | null>(null);
   const messagesEndRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
@@ -207,7 +212,22 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
       const res = await fetch(`/api/messages/${userId}`, { credentials: "include" });
       if (res.ok) {
         const messages = await res.json();
-        setChatMessages((prev) => ({ ...prev, [userId]: messages }));
+        // Fetch reactions for each message
+        const messagesWithReactions = await Promise.all(
+          messages.map(async (msg: DirectMessage) => {
+            try {
+              const reactionsRes = await fetch(`/api/messages/${msg.id}/reactions`, { credentials: "include" });
+              if (reactionsRes.ok) {
+                const reactions = await reactionsRes.json();
+                return { ...msg, reactions };
+              }
+            } catch (e) {
+              console.error("Failed to fetch reactions for message:", msg.id, e);
+            }
+            return msg;
+          })
+        );
+        setChatMessages((prev) => ({ ...prev, [userId]: messagesWithReactions }));
         // Messages are marked as read on the server, update unread count
         queryClient.invalidateQueries({ queryKey: ["/api/messages/unread-count"] });
         queryClient.invalidateQueries({ queryKey: ["/api/messages/conversations"] });
@@ -262,7 +282,23 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
     setTimeout(() => {
       queryClient.invalidateQueries({ queryKey: ["messages", userId] });
       queryClient.invalidateQueries({ queryKey: ["/api/messages/conversations"] });
+      loadMessages(userId);
     }, 500);
+  };
+  
+  // Handle sending a GIF
+  const handleSendGif = (userId: string, gifUrl: string) => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    
+    wsRef.current.send(JSON.stringify({
+      type: "direct_message",
+      receiverId: userId,
+      content: `[GIF]${gifUrl}[/GIF]`,
+    }));
+    
+    setTimeout(() => {
+      loadMessages(userId);
+    }, 100);
   };
 
   const handleTyping = (userId: string, isTyping: boolean) => {
@@ -348,17 +384,128 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
   // State for reaction popup
   const [reactionPopupMsgId, setReactionPopupMsgId] = useState<string | null>(null);
   
+  // GIF Picker component (simplified for tray)
+  function GifPickerTray({ onSelect, userId }: { onSelect: (gifUrl: string) => void; userId: string }) {
+    const [searchQuery, setSearchQuery] = useState("");
+    const [gifs, setGifs] = useState<any[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [isOpen, setIsOpen] = useState(false);
+    
+    const fetchGifs = async (query: string = "") => {
+      setLoading(true);
+      try {
+        const apiKey = "dc6zaTOxFJmzC";
+        const endpoint = query 
+          ? `https://api.giphy.com/v1/gifs/search?api_key=${apiKey}&q=${encodeURIComponent(query)}&limit=12&rating=g`
+          : `https://api.giphy.com/v1/gifs/trending?api_key=${apiKey}&limit=12&rating=g`;
+        
+        const res = await fetch(endpoint);
+        const data = await res.json();
+        setGifs(data.data || []);
+      } catch (error) {
+        console.error("Failed to fetch GIFs:", error);
+        setGifs([]);
+      }
+      setLoading(false);
+    };
+
+    useEffect(() => {
+      if (isOpen) {
+        fetchGifs();
+      }
+    }, [isOpen]);
+
+    useEffect(() => {
+      const debounce = setTimeout(() => {
+        if (isOpen && searchQuery) {
+          fetchGifs(searchQuery);
+        }
+      }, 300);
+      return () => clearTimeout(debounce);
+    }, [searchQuery, isOpen]);
+
+    return (
+      <Popover open={isOpen} onOpenChange={setIsOpen}>
+        <PopoverTrigger asChild>
+          <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-9 sm:w-9 flex-shrink-0" title={t("messages.sendGif")}>
+            <span className="text-xs sm:text-sm font-semibold">GIF</span>
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-64 p-2" align="start">
+          <Input
+            placeholder={t("messages.searchGifs")}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="mb-2 h-8 text-xs"
+          />
+          <ScrollArea className="h-48">
+            {loading ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+              </div>
+            ) : gifs.length === 0 ? (
+              <p className="text-center text-muted-foreground py-4 text-xs">{t("messages.noGifsFound")}</p>
+            ) : (
+              <div className="grid grid-cols-2 gap-1.5">
+                {gifs.map((gif) => (
+                  <button
+                    key={gif.id}
+                    onClick={() => {
+                      onSelect(gif.images.fixed_height.url);
+                      setIsOpen(false);
+                      setSearchQuery("");
+                    }}
+                    className="rounded overflow-hidden hover:ring-2 hover:ring-primary transition-all"
+                  >
+                    <img
+                      src={gif.images.fixed_height_small.url}
+                      alt={gif.title}
+                      className="w-full h-16 object-cover"
+                      loading="lazy"
+                    />
+                  </button>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+        </PopoverContent>
+      </Popover>
+    );
+  }
+  
   // Handle sending a reaction
   const handleReaction = async (messageId: string, emoji: string) => {
     try {
       await apiRequest("POST", `/api/messages/${messageId}/reactions`, { emoji, messageType: 'direct' });
       setReactionPopupMsgId(null);
-      // Refresh messages
-      queryClient.invalidateQueries({ queryKey: ["messages"] });
+      // Refresh messages to get updated reactions
+      openChats.forEach(chat => {
+        loadMessages(chat.user.id);
+      });
     } catch (error) {
       console.error("Failed to add reaction:", error);
+      toast({ title: t("errors.general"), variant: "destructive" });
     }
   };
+  
+  // Delete message mutation
+  const deleteMessageMutation = useMutation({
+    mutationFn: async (messageId: string) => {
+      return apiRequest("DELETE", `/api/messages/${messageId}`);
+    },
+    onSuccess: () => {
+      toast({ title: t("messages.messageDeleted") });
+      setDeleteDialogOpen(false);
+      setMessageToDelete(null);
+      // Refresh messages
+      openChats.forEach(chat => {
+        loadMessages(chat.user.id);
+      });
+    },
+    onError: () => {
+      toast({ title: t("errors.general"), variant: "destructive" });
+    },
+  });
 
   // Expose openChat method globally for other components
   useEffect(() => {
@@ -426,7 +573,7 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
               exit={{ y: 300, opacity: 0 }}
               transition={{ type: "spring", damping: 25, stiffness: 300 }}
             >
-              <Card className="w-72 sm:w-80 h-80 sm:h-96 flex flex-col shadow-2xl">
+              <Card className="w-80 sm:w-96 h-80 sm:h-96 flex flex-col shadow-2xl">
                 {/* Header */}
                 <div className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 border-b bg-card">
                   <Avatar className="w-7 h-7 sm:w-8 sm:h-8">
@@ -494,39 +641,51 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
                               </div>
                             </div>
                             
-                            {/* Reaction picker trigger - smaller for tray */}
-                            <Popover 
-                              open={reactionPopupMsgId === msg.id} 
-                              onOpenChange={(open) => setReactionPopupMsgId(open ? msg.id : null)}
-                            >
-                              <PopoverTrigger asChild>
-                                <button 
-                                  className={`absolute ${msg.senderId === currentUser?.id ? '-left-6' : '-right-6'} top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-muted/50 transition-colors opacity-0 group-hover:opacity-100`}
+                            {/* Action buttons - delete and reaction */}
+                            <div className={`absolute ${msg.senderId === currentUser?.id ? '-left-12' : '-right-12'} top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity`}>
+                              {msg.senderId === currentUser?.id && (
+                                <button
+                                  onClick={() => {
+                                    setMessageToDelete(msg.id);
+                                    setDeleteDialogOpen(true);
+                                  }}
+                                  className="p-0.5 hover:bg-destructive/10 rounded"
+                                  title={t("common.delete")}
                                 >
-                                  <Smile className="w-3 h-3 text-muted-foreground" />
+                                  <Trash2 className="w-3 h-3 text-destructive" />
                                 </button>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-auto p-1" side="top" align="center">
-                                <div className="flex gap-0.5">
-                                  {EMOJI_REACTIONS.map((emoji) => (
-                                    <button
-                                      key={emoji}
-                                      onClick={() => handleReaction(msg.id, emoji)}
-                                      className="text-base p-1 rounded hover:bg-muted transition-colors"
-                                    >
-                                      {emoji}
-                                    </button>
-                                  ))}
-                                </div>
-                              </PopoverContent>
-                            </Popover>
+                              )}
+                              <Popover 
+                                open={reactionPopupMsgId === msg.id} 
+                                onOpenChange={(open) => setReactionPopupMsgId(open ? msg.id : null)}
+                              >
+                                <PopoverTrigger asChild>
+                                  <button className="p-0.5 rounded hover:bg-muted/50 transition-colors">
+                                    <Smile className="w-3 h-3 text-muted-foreground" />
+                                  </button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-1" side="top" align="center">
+                                  <div className="flex gap-0.5">
+                                    {EMOJI_REACTIONS.map((emoji) => (
+                                      <button
+                                        key={emoji}
+                                        onClick={() => handleReaction(msg.id, emoji)}
+                                        className="text-base p-1 rounded hover:bg-muted transition-colors"
+                                      >
+                                        {emoji}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </PopoverContent>
+                              </Popover>
+                            </div>
                           </div>
                           
                           {/* Reactions display */}
-                          {(msg as any).reactions && (msg as any).reactions.length > 0 && (
+                          {(msg as any).reactions && Array.isArray((msg as any).reactions) && (msg as any).reactions.length > 0 && (
                             <div className="flex gap-0.5 mt-0.5">
                               {Object.entries(
-                                ((msg as any).reactions as Array<{ emoji: string }>).reduce((acc: Record<string, number>, r) => {
+                                ((msg as any).reactions as Array<{ emoji: string; user?: User }>).reduce((acc: Record<string, number>, r) => {
                                   acc[r.emoji] = (acc[r.emoji] || 0) + 1;
                                   return acc;
                                 }, {})
@@ -595,6 +754,10 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
                     >
                       <ImagePlus className="w-3 h-3 sm:w-4 sm:h-4" />
                     </Button>
+                    <GifPickerTray 
+                      onSelect={(gifUrl) => handleSendGif(chat.user.id, gifUrl)} 
+                      userId={chat.user.id}
+                    />
                     <Input
                       value={inputValues[chat.user.id] || ""}
                       onChange={(e) => {
@@ -634,6 +797,33 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
         isOpen={lightboxState.isOpen}
         onClose={closeLightbox}
       />
+      
+      {/* Delete Message Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={(open) => {
+        setDeleteDialogOpen(open);
+        if (!open) setMessageToDelete(null);
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("messages.deleteMessage")}</DialogTitle>
+            <DialogDescription>
+              {t("messages.deleteMessageConfirm")}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+              {t("common.cancel")}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => messageToDelete && deleteMessageMutation.mutate(messageToDelete)}
+              disabled={deleteMessageMutation.isPending}
+            >
+              {t("common.delete")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

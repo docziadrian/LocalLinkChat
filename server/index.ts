@@ -15,13 +15,14 @@ declare module "http" {
 
 app.use(
   express.json({
+    limit: '200mb', // Increase limit for JSON payloads
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     },
   })
 );
 
-app.use(express.urlencoded({ extended: false }));
+app.use(express.urlencoded({ extended: false, limit: '200mb' })); // Increase limit for URL-encoded payloads
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {

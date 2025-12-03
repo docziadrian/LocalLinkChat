@@ -842,9 +842,21 @@ export default function RealsPage() {
       });
       
       if (!uploadRes.ok) {
-        const errorData = await uploadRes.json().catch(() => ({}));
-        console.error("Video upload failed:", uploadRes.status, errorData);
-        throw new Error(errorData.error || errorData.details || "Failed to upload video");
+        let errorMessage = "Failed to upload video";
+        try {
+          const errorData = await uploadRes.json();
+          errorMessage = errorData.details || errorData.error || errorMessage;
+          console.error("Video upload failed:", uploadRes.status, errorData);
+        } catch (e) {
+          // If response is not JSON, use status text
+          if (uploadRes.status === 413) {
+            errorMessage = t("reals.videoTooLarge");
+          } else {
+            errorMessage = uploadRes.statusText || errorMessage;
+          }
+          console.error("Video upload failed:", uploadRes.status, uploadRes.statusText);
+        }
+        throw new Error(errorMessage);
       }
       
       const uploadData = await uploadRes.json();
@@ -913,8 +925,15 @@ export default function RealsPage() {
         return;
       }
       
-      if (file.size > 100 * 1024 * 1024) {
-        toast({ title: t("reals.videoTooLarge"), variant: "destructive" });
+      const maxSize = 200 * 1024 * 1024; // 200MB
+      if (file.size > maxSize) {
+        const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+        const maxSizeMB = (maxSize / (1024 * 1024)).toFixed(0);
+        toast({ 
+          title: t("reals.videoTooLarge"), 
+          description: `Your file is ${fileSizeMB}MB. Maximum size is ${maxSizeMB}MB.`,
+          variant: "destructive" 
+        });
         return;
       }
       

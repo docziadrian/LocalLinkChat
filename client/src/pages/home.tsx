@@ -11,6 +11,8 @@ import { UserCard } from "@/components/user-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useRef } from "react";
+import { LiveChat, type LiveChatRef } from "@/components/live-chat";
 import { 
   Users, 
   UserPlus, 
@@ -54,6 +56,7 @@ export default function Home() {
   const { user: currentUser } = useAuth();
   const { toast } = useToast();
   const openChat = useOpenChat();
+  const liveChatRef = useRef<LiveChatRef>(null);
 
   const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
     queryKey: ["/api/stats"],
@@ -240,7 +243,12 @@ export default function Home() {
                     {t("dashboard.updateInterests")}
                   </Button>
                 </Link>
-                <Button variant="outline" className="w-full justify-start gap-2" data-testid="button-get-support">
+                <Button 
+                  variant="outline" 
+                  className="w-full justify-start gap-2" 
+                  data-testid="button-get-support"
+                  onClick={() => liveChatRef.current?.openChat()}
+                >
                   <MessageSquare className="h-4 w-4" />
                   {t("dashboard.getSupport")}
                 </Button>
@@ -257,6 +265,12 @@ export default function Home() {
           />
         </div>
       </div>
+      
+      {/* Live Support Chat */}
+      <LiveChat
+        ref={liveChatRef}
+        currentUserName={currentUser?.name || ""}
+      />
     </div>
   );
 }

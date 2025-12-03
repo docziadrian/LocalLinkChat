@@ -179,7 +179,8 @@ const shortVideoUpload = multer({
   storage: shortVideoStorage,
   fileFilter: videoFileFilter,
   limits: {
-    fileSize: 100 * 1024 * 1024, // 100MB limit for short videos
+    fileSize: 200 * 1024 * 1024, // 200MB limit for short videos
+    fieldSize: 200 * 1024 * 1024, // 200MB limit for field size
   },
 });
 
@@ -191,6 +192,15 @@ router.post("/short-video", requireAuth, shortVideoUpload.single("video"), async
     if (!file) {
       console.error("Short video upload: No file in request");
       return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    // Check file size
+    const maxSize = 200 * 1024 * 1024; // 200MB
+    if (file.size > maxSize) {
+      return res.status(413).json({ 
+        error: "File too large", 
+        details: `Maximum file size is ${maxSize / (1024 * 1024)}MB. Your file is ${(file.size / (1024 * 1024)).toFixed(2)}MB.` 
+      });
     }
 
     // Verify the file was saved correctly
@@ -213,7 +223,26 @@ router.post("/short-video", requireAuth, shortVideoUpload.single("video"), async
     });
   } catch (error: any) {
     console.error("Short video upload error:", error.message || error);
-    res.status(500).json({ error: "Failed to upload short video", details: error.message });
+    
+    // Handle multer errors specifically
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ 
+        error: "File too large", 
+        details: "Maximum file size is 200MB. Please choose a smaller video file." 
+      });
+    }
+    
+    if (error.code === 'LIMIT_UNEXPECTED_FILE') {
+      return res.status(400).json({ 
+        error: "Invalid file field", 
+        details: "Please use the 'video' field name for the file upload." 
+      });
+    }
+    
+    res.status(500).json({ 
+      error: "Failed to upload short video", 
+      details: error.message || "An unexpected error occurred" 
+    });
   }
 });
 
