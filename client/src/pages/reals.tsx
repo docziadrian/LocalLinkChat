@@ -925,7 +925,7 @@ export default function RealsPage() {
         return;
       }
       
-      const maxSize = 200 * 1024 * 1024; // 200MB
+      const maxSize = 2000000 * 1024 * 1024; // 200MB
       if (file.size > maxSize) {
         const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
         const maxSizeMB = (maxSize / (1024 * 1024)).toFixed(0);
