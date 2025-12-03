@@ -835,11 +835,21 @@ export default function RealsPage() {
       
       console.log("Uploading video:", videoFile.name, "Size:", videoFile.size);
       
-      const uploadRes = await fetch("/api/upload/short-video", {
-        method: "POST",
-        credentials: "include",
-        body: formData,
-      });
+      let uploadRes;
+      try {
+        uploadRes = await fetch("/api/upload/short-video", {
+          method: "POST",
+          credentials: "include",
+          body: formData,
+        });
+      } catch (fetchError: any) {
+        // Handle network errors (CORS, connection issues, etc.)
+        console.error("Network error during upload:", fetchError);
+        if (fetchError.message && fetchError.message.includes('NetworkError')) {
+          throw new Error("Network error. Please check your internet connection. If the file is large, try a smaller video or check your connection speed.");
+        }
+        throw new Error(fetchError.message || "Failed to upload video. Please check your connection and try again.");
+      }
       
       if (!uploadRes.ok) {
         let errorMessage = "Failed to upload video";
