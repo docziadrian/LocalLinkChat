@@ -166,6 +166,9 @@ function ReelItem({
   const [commentInput, setCommentInput] = useState("");
   const [commentsOpen, setCommentsOpen] = useState(false); // For mobile comments sheet
   
+  // Tap detection for mobile - distinguish tap from swipe
+  const tapStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  
   const isOwnShort = currentUser?.id === short.userId;
 
   // Fetch enriched data (likes, dislikes, user reaction)
@@ -252,10 +255,21 @@ function ReelItem({
     if (videoRef.current) {
       if (isPlaying) {
         videoRef.current.pause();
+        setIsPlaying(false);
       } else {
-        videoRef.current.play();
+        // User interaction - can now play with sound
+        videoRef.current.muted = false;
+        setIsMuted(false);
+        videoRef.current.play().then(() => {
+          setIsPlaying(true);
+        }).catch(() => {
+          // Still blocked, play muted
+          videoRef.current!.muted = true;
+          setIsMuted(true);
+          videoRef.current!.play();
+          setIsPlaying(true);
+        });
       }
-      setIsPlaying(!isPlaying);
     }
   };
 
@@ -364,10 +378,42 @@ function ReelItem({
     </>
   );
 
+  // Tap handler for mobile - detects short taps vs swipes
+  const handleTapStart = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    tapStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+  };
+
+  const handleTapEnd = (e: React.TouchEvent) => {
+    if (!tapStartRef.current) return;
+    
+    const touch = e.changedTouches[0];
+    const deltaX = Math.abs(touch.clientX - tapStartRef.current.x);
+    const deltaY = Math.abs(touch.clientY - tapStartRef.current.y);
+    const deltaTime = Date.now() - tapStartRef.current.time;
+    
+    // It's a tap if: moved less than 10px and took less than 300ms
+    const isTap = deltaX < 10 && deltaY < 10 && deltaTime < 300;
+    
+    if (isTap) {
+      const target = e.target as Element;
+      // Only toggle if not on interactive elements
+      if (!target.closest('button') && !target.closest('[data-no-swipe]') && !target.closest('a')) {
+        handlePlayToggle();
+      }
+    }
+    
+    tapStartRef.current = null;
+  };
+
   // Mobile Layout - Full-screen TikTok-style
   if (isMobile) {
     return (
-      <div className="h-[90vh] w-full relative bg-black overflow-hidden touch-none">
+      <div 
+        className="h-[90vh] w-full relative bg-black overflow-hidden touch-none"
+        onTouchStart={handleTapStart}
+        onTouchEnd={handleTapEnd}
+      >
         {/* Full-screen Video */}
         <video
           ref={videoRef}
@@ -378,13 +424,6 @@ function ReelItem({
           playsInline
           muted={isMuted}
           autoPlay={isActive}
-          onPointerUp={(e) => {
-            // Only toggle play/pause if not on an interactive element
-            const target = e.target as Element;
-            if (!target.closest('button') && !target.closest('[data-no-swipe]') && !target.closest('a')) {
-              handlePlayToggle();
-            }
-          }}
         />
         
         {/* Gradient overlay for better text visibility */}
