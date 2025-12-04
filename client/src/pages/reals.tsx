@@ -161,7 +161,7 @@ function ReelItem({
   const { toast } = useToast();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isMuted, setIsMuted] = useState(false); // Sound ON by default
+  const [isMuted, setIsMuted] = useState(() => !!isMobile); // Start muted on mobile for reliable autoplay
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [commentInput, setCommentInput] = useState("");
   const [commentsOpen, setCommentsOpen] = useState(false); // For mobile comments sheet
@@ -221,8 +221,18 @@ function ReelItem({
   // Auto-play when active
   useEffect(() => {
     if (isActive && videoRef.current) {
-      videoRef.current.play().catch(() => {});
-      setIsPlaying(true);
+      if (isMobile) {
+        videoRef.current.muted = true;
+      }
+      videoRef.current
+        .play()
+        .then(() => {
+          setIsPlaying(true);
+        })
+        .catch(() => {
+          // Autoplay might be blocked; keep isPlaying false
+          setIsPlaying(!videoRef.current?.paused);
+        });
       // Increment view count
       fetch(`/api/shorts/${short.id}/view`, { method: "POST", credentials: "include" });
     } else if (!isActive && videoRef.current) {
@@ -360,6 +370,7 @@ function ReelItem({
           loop
           playsInline
           muted={isMuted}
+          autoPlay={isActive}
           onClick={handlePlayToggle}
         />
         
@@ -559,6 +570,7 @@ function ReelItem({
           loop
           playsInline
           muted={isMuted}
+          autoPlay={isActive}
           onClick={handlePlayToggle}
         />
         
@@ -1136,6 +1148,18 @@ export default function RealsPage() {
       container.removeEventListener('touchend', handleTouchEnd);
     };
   }, [isMobile, goToPrev, goToNext]);
+
+  // Disable body scroll while the mobile Reels view is active
+  useEffect(() => {
+    if (!isMobile) return;
+
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isMobile]);
 
   // Loading state
   if (isLoading) {

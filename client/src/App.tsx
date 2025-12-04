@@ -300,10 +300,7 @@ function AppContent() {
                       {t("nav.profile")}
                     </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuItem data-testid="menu-settings">
-                    <Settings className="w-4 h-4 mr-2" />
-                    {t("nav.settings")}
-                  </DropdownMenuItem>
+                  
                   {/* Support Chat - Mobile only */}
                   {isMobile && (
                     <DropdownMenuItem 
