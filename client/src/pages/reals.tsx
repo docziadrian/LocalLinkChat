@@ -102,7 +102,7 @@ function formatTimeAgo(timestamp: string, t: (key: string, vars?: Record<string,
 const PAGE_SIZE = 5;
 
 // Animation variants for TikTok-like seamless transitions
-// Faster, snappier transitions
+// The key is both items are visible simultaneously - incoming slides over outgoing
 const reelVariants = {
   enter: (direction: number) => ({
     y: direction > 0 ? "100%" : "-100%",
@@ -112,16 +112,16 @@ const reelVariants = {
     y: 0,
     zIndex: 1,
     transition: {
-      duration: 0.18,
-      ease: [0.25, 0.46, 0.45, 0.94], // Faster ease for snappy TikTok feel
+      duration: 0.15,
+      ease: [0.32, 0.72, 0, 1], // Custom ease for snappy TikTok feel
     },
   },
   exit: (direction: number) => ({
-    y: direction < 0 ? "25%" : "-25%",
+    y: direction < 0 ? "30%" : "-30%",
     zIndex: 0,
     transition: {
-      duration: 0.18,
-      ease: [0.25, 0.46, 0.45, 0.94],
+      duration: 0.15,
+      ease: [0.32, 0.72, 0, 1],
     },
   }),
 };
@@ -161,7 +161,7 @@ function ReelItem({
   const { toast } = useToast();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isMuted, setIsMuted] = useState(false); // Sound ON by default
+  const [isMuted, setIsMuted] = useState(false); // Audio ON by default
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [commentInput, setCommentInput] = useState("");
   const [commentsOpen, setCommentsOpen] = useState(false); // For mobile comments sheet
@@ -221,14 +221,24 @@ function ReelItem({
   // Auto-play when active
   useEffect(() => {
     if (isActive && videoRef.current) {
+      // Try to play with sound first; if blocked, try muted
+      videoRef.current.muted = false;
       videoRef.current
         .play()
         .then(() => {
           setIsPlaying(true);
         })
         .catch(() => {
-          // Autoplay might be blocked; keep isPlaying false
-          setIsPlaying(!videoRef.current?.paused);
+          // Autoplay with sound blocked, try muted
+          if (videoRef.current) {
+            videoRef.current.muted = true;
+            setIsMuted(true);
+            videoRef.current.play().then(() => {
+              setIsPlaying(true);
+            }).catch(() => {
+              setIsPlaying(false);
+            });
+          }
         });
       // Increment view count
       fetch(`/api/shorts/${short.id}/view`, { method: "POST", credentials: "include" });
@@ -357,7 +367,7 @@ function ReelItem({
   // Mobile Layout - Full-screen TikTok-style
   if (isMobile) {
     return (
-      <div className="h-[90vh] w-full relative bg-black overflow-hidden">
+      <div className="h-[90vh] w-full relative bg-black overflow-hidden touch-none">
         {/* Full-screen Video */}
         <video
           ref={videoRef}
@@ -368,7 +378,13 @@ function ReelItem({
           playsInline
           muted={isMuted}
           autoPlay={isActive}
-          onClick={handlePlayToggle}
+          onPointerUp={(e) => {
+            // Only toggle play/pause if not on an interactive element
+            const target = e.target as Element;
+            if (!target.closest('button') && !target.closest('[data-no-swipe]') && !target.closest('a')) {
+              handlePlayToggle();
+            }
+          }}
         />
         
         {/* Gradient overlay for better text visibility */}
@@ -1018,7 +1034,7 @@ export default function RealsPage() {
     if (!container) return;
 
     let lastScrollTime = 0;
-    const scrollThrottle = 180; // Faster scroll navigation
+    const scrollThrottle = 500; // ms between scroll navigations
 
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -1062,7 +1078,7 @@ export default function RealsPage() {
 
     const minSwipeDistance = 50; // Minimum distance for a swipe
     let lastSwipeTime = 0;
-    const swipeThrottle = 180; // Faster swipe navigation
+    const swipeThrottle = 400; // ms between swipe navigations
 
     // Check if the touch target is an interactive element that should block swipe
     const isInteractiveElement = (target: EventTarget | null): boolean => {
@@ -1151,19 +1167,10 @@ export default function RealsPage() {
     if (!isMobile) return;
 
     const originalOverflow = document.body.style.overflow;
-    const originalPosition = document.body.style.position;
-    const originalTop = document.body.style.top;
-    const originalTouchAction = document.body.style.touchAction;
     document.body.style.overflow = "hidden";
-    document.body.style.position = "fixed";
-    document.body.style.top = "0";
-    document.body.style.touchAction = "none";
 
     return () => {
       document.body.style.overflow = originalOverflow;
-      document.body.style.position = originalPosition;
-      document.body.style.top = originalTop;
-      document.body.style.touchAction = originalTouchAction;
     };
   }, [isMobile]);
 
@@ -1316,9 +1323,10 @@ export default function RealsPage() {
         ref={containerRef}
         className={`overflow-hidden relative ${
           isMobile 
-            ? 'h-[100dvh] fixed inset-0 z-40' 
+            ? 'h-[100dvh] fixed inset-0 z-40 touch-none overscroll-none' 
             : 'h-[calc(100vh-8rem)]'
         }`}
+        style={isMobile ? { touchAction: 'none' } : undefined}
       >
         {/* Animated REEL Container - no mode="wait" so both items visible during transition */}
         <AnimatePresence initial={false} custom={direction}>
