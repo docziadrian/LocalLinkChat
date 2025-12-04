@@ -102,7 +102,7 @@ function formatTimeAgo(timestamp: string, t: (key: string, vars?: Record<string,
 const PAGE_SIZE = 5;
 
 // Animation variants for TikTok-like seamless transitions
-// The key is both items are visible simultaneously - incoming slides over outgoing
+// Faster, snappier transitions
 const reelVariants = {
   enter: (direction: number) => ({
     y: direction > 0 ? "100%" : "-100%",
@@ -112,16 +112,16 @@ const reelVariants = {
     y: 0,
     zIndex: 1,
     transition: {
-      duration: 0.3,
-      ease: [0.32, 0.72, 0, 1], // Custom ease for snappy TikTok feel
+      duration: 0.18,
+      ease: [0.25, 0.46, 0.45, 0.94], // Faster ease for snappy TikTok feel
     },
   },
   exit: (direction: number) => ({
-    y: direction < 0 ? "30%" : "-30%",
+    y: direction < 0 ? "25%" : "-25%",
     zIndex: 0,
     transition: {
-      duration: 0.3,
-      ease: [0.32, 0.72, 0, 1],
+      duration: 0.18,
+      ease: [0.25, 0.46, 0.45, 0.94],
     },
   }),
 };
@@ -161,7 +161,7 @@ function ReelItem({
   const { toast } = useToast();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isMuted, setIsMuted] = useState(() => !!isMobile); // Start muted on mobile for reliable autoplay
+  const [isMuted, setIsMuted] = useState(false); // Sound ON by default
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [commentInput, setCommentInput] = useState("");
   const [commentsOpen, setCommentsOpen] = useState(false); // For mobile comments sheet
@@ -221,9 +221,6 @@ function ReelItem({
   // Auto-play when active
   useEffect(() => {
     if (isActive && videoRef.current) {
-      if (isMobile) {
-        videoRef.current.muted = true;
-      }
       videoRef.current
         .play()
         .then(() => {
@@ -1021,7 +1018,7 @@ export default function RealsPage() {
     if (!container) return;
 
     let lastScrollTime = 0;
-    const scrollThrottle = 500; // ms between scroll navigations
+    const scrollThrottle = 180; // Faster scroll navigation
 
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -1065,7 +1062,7 @@ export default function RealsPage() {
 
     const minSwipeDistance = 50; // Minimum distance for a swipe
     let lastSwipeTime = 0;
-    const swipeThrottle = 400; // ms between swipe navigations
+    const swipeThrottle = 180; // Faster swipe navigation
 
     // Check if the touch target is an interactive element that should block swipe
     const isInteractiveElement = (target: EventTarget | null): boolean => {
@@ -1154,10 +1151,19 @@ export default function RealsPage() {
     if (!isMobile) return;
 
     const originalOverflow = document.body.style.overflow;
+    const originalPosition = document.body.style.position;
+    const originalTop = document.body.style.top;
+    const originalTouchAction = document.body.style.touchAction;
     document.body.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.top = "0";
+    document.body.style.touchAction = "none";
 
     return () => {
       document.body.style.overflow = originalOverflow;
+      document.body.style.position = originalPosition;
+      document.body.style.top = originalTop;
+      document.body.style.touchAction = originalTouchAction;
     };
   }, [isMobile]);
 
