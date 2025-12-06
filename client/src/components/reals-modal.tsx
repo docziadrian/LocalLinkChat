@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { useI18n } from "@/lib/i18n";
@@ -90,6 +90,8 @@ export function RealsModal({ isOpen, onClose, shorts, initialIndex }: RealsModal
   const { user: currentUser } = useAuth();
   const { toast } = useToast();
   const videoRef = useRef<HTMLVideoElement>(null);
+  const commentInputRef = useRef<HTMLInputElement>(null);
+  const isTypingRef = useRef(false);
   
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -99,11 +101,60 @@ export function RealsModal({ isOpen, onClose, shorts, initialIndex }: RealsModal
   
   const currentShort = shorts[currentIndex];
   
-  // Reset state when modal opens or index changes
+  // Reset state when modal opens or index changes (but preserve input if user is typing)
   useEffect(() => {
     setCurrentIndex(initialIndex);
-    setCommentInput("");
+    // Only reset comment input if user is not actively typing
+    if (!isTypingRef.current) {
+      setCommentInput("");
+    }
   }, [initialIndex, isOpen]);
+  
+  // Fetch comments
+  const { data: comments = [], isLoading: commentsLoading, refetch: refetchComments } = useQuery<EnrichedComment[]>({
+    queryKey: ["/api/shorts", currentShort?.id, "comments"],
+    queryFn: async () => {
+      const res = await fetch(`/api/shorts/${currentShort?.id}/comments`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch comments");
+      return res.json();
+    },
+    enabled: isOpen && !!currentShort?.id && showComments,
+  });
+  
+  // Maintain focus on comment input - use a ref callback to ensure focus persists
+  const inputRefCallback = useCallback((node: HTMLInputElement | null) => {
+    if (node) {
+      commentInputRef.current = node;
+      // If user was typing, restore focus immediately
+      if (isTypingRef.current && document.activeElement !== node) {
+        // Use setTimeout to ensure this runs after React's render cycle
+        setTimeout(() => {
+          if (isTypingRef.current && node && document.activeElement !== node) {
+            node.focus();
+            const length = node.value.length;
+            node.setSelectionRange(length, length);
+          }
+        }, 0);
+      }
+    }
+  }, []);
+  
+  // Also restore focus when comments change (but not on every keystroke)
+  useEffect(() => {
+    if (showComments && isTypingRef.current && commentInputRef.current) {
+      const input = commentInputRef.current;
+      // Only restore if focus was lost
+      if (document.activeElement !== input) {
+        requestAnimationFrame(() => {
+          if (input && isTypingRef.current && document.activeElement !== input) {
+            input.focus();
+            const length = input.value.length;
+            input.setSelectionRange(length, length);
+          }
+        });
+      }
+    }
+  }, [showComments, comments]);
   
   // Fetch enriched short data (likes, comments count, user reaction)
   const { data: enrichedData, refetch: refetchEnriched } = useQuery<{
@@ -152,6 +203,7 @@ export function RealsModal({ isOpen, onClose, shorts, initialIndex }: RealsModal
     },
     onSuccess: () => {
       setCommentInput("");
+      isTypingRef.current = false;
       refetchComments();
       refetchEnriched();
       toast({ title: t("reels.commentAdded") });
@@ -204,6 +256,12 @@ export function RealsModal({ isOpen, onClose, shorts, initialIndex }: RealsModal
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isOpen) return;
+      
+      // Don't handle keyboard events if user is typing in an input/textarea
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+        return;
+      }
       
       if (e.key === "ArrowLeft") {
         goToPrevious();
@@ -438,11 +496,52 @@ export function RealsModal({ isOpen, onClose, shorts, initialIndex }: RealsModal
                 
                 {/* Comment input */}
                 {currentUser && (
-                  <div className="p-2 border-t flex gap-2">
+                  <div className="p-2 border-t flex gap-2" key={`comment-input-modal-${currentShort?.id}`}>
                     <Input
+                      ref={inputRefCallback}
                       placeholder={t("reels.addComment")}
                       value={commentInput}
-                      onChange={(e) => setCommentInput(e.target.value)}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        isTypingRef.current = true;
+                        setCommentInput(value);
+                        // Ensure focus is maintained immediately after state update
+                        requestAnimationFrame(() => {
+                          if (commentInputRef.current && document.activeElement !== commentInputRef.current && isTypingRef.current) {
+                            commentInputRef.current.focus();
+                            const length = commentInputRef.current.value.length;
+                            commentInputRef.current.setSelectionRange(length, length);
+                          }
+                        });
+                      }}
+                      onFocus={(e) => {
+                        isTypingRef.current = true;
+                        // Store the current selection
+                        const input = e.currentTarget;
+                        const selectionStart = input.selectionStart || 0;
+                        const selectionEnd = input.selectionEnd || 0;
+                        // Restore selection after a brief moment to ensure it's maintained
+                        setTimeout(() => {
+                          if (input === document.activeElement) {
+                            input.setSelectionRange(selectionStart, selectionEnd);
+                          }
+                        }, 0);
+                      }}
+                      onBlur={(e) => {
+                        // Only mark as not typing if focus moves outside the comments section
+                        // This allows focus to move to the send button without losing typing state
+                        const relatedTarget = e.relatedTarget as HTMLElement;
+                        const container = e.currentTarget.closest('.flex.flex-col');
+                        if (!relatedTarget || !container?.contains(relatedTarget)) {
+                          // Small delay to allow focus to move to send button
+                          setTimeout(() => {
+                            if (document.activeElement !== commentInputRef.current && 
+                                document.activeElement !== e.currentTarget.closest('.p-2')?.querySelector('button')) {
+                              isTypingRef.current = false;
+                            }
+                          }, 100);
+                        }
+                      }}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && !e.shiftKey) {
                           e.preventDefault();

@@ -160,6 +160,8 @@ function ReelItem({
 }) {
   const { toast } = useToast();
   const videoRef = useRef<HTMLVideoElement>(null);
+  const commentInputRef = useRef<HTMLInputElement>(null);
+  const isTypingRef = useRef(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false); // Audio ON by default
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -197,6 +199,41 @@ function ReelItem({
     },
     enabled: isActive,
   });
+  
+  // Maintain focus on comment input - use a ref callback to ensure focus persists
+  const inputRefCallback = useCallback((node: HTMLInputElement | null) => {
+    if (node) {
+      commentInputRef.current = node;
+      // If user was typing, restore focus immediately
+      if (isTypingRef.current && document.activeElement !== node) {
+        // Use setTimeout to ensure this runs after React's render cycle
+        setTimeout(() => {
+          if (isTypingRef.current && node && document.activeElement !== node) {
+            node.focus();
+            const length = node.value.length;
+            node.setSelectionRange(length, length);
+          }
+        }, 0);
+      }
+    }
+  }, []);
+  
+  // Also restore focus when comments change (but not on every keystroke)
+  useEffect(() => {
+    if (isTypingRef.current && commentInputRef.current) {
+      const input = commentInputRef.current;
+      // Only restore if focus was lost
+      if (document.activeElement !== input) {
+        requestAnimationFrame(() => {
+          if (input && isTypingRef.current && document.activeElement !== input) {
+            input.focus();
+            const length = input.value.length;
+            input.setSelectionRange(length, length);
+          }
+        });
+      }
+    }
+  }, [comments]);
 
   // React mutation
   const reactMutation = useMutation({
@@ -215,6 +252,7 @@ function ReelItem({
     },
     onSuccess: () => {
       setCommentInput("");
+      isTypingRef.current = false;
       refetchComments();
       refetchEnriched();
       toast({ title: t("reals.commentAdded") });
@@ -346,13 +384,55 @@ function ReelItem({
         </div>
       </ScrollArea>
       
-      {/* Comment Input */}
+      {/* Comment Input - Stable key to prevent remounting */}
       {currentUser ? (
-        <div className="p-3 border-t flex gap-2">
+        <div className="p-3 border-t flex gap-2" key={`comment-input-${short.id}`}>
           <Input
+            ref={inputRefCallback}
             placeholder={t("reals.addComment")}
             value={commentInput}
-            onChange={(e) => setCommentInput(e.target.value)}
+            onChange={(e) => {
+              const value = e.target.value;
+              isTypingRef.current = true;
+              // Use functional update to prevent unnecessary re-renders
+              setCommentInput(value);
+              // Ensure focus is maintained immediately after state update
+              requestAnimationFrame(() => {
+                if (commentInputRef.current && document.activeElement !== commentInputRef.current && isTypingRef.current) {
+                  commentInputRef.current.focus();
+                  const length = commentInputRef.current.value.length;
+                  commentInputRef.current.setSelectionRange(length, length);
+                }
+              });
+            }}
+            onFocus={(e) => {
+              isTypingRef.current = true;
+              // Store the current selection
+              const input = e.currentTarget;
+              const selectionStart = input.selectionStart || 0;
+              const selectionEnd = input.selectionEnd || 0;
+              // Restore selection after a brief moment to ensure it's maintained
+              setTimeout(() => {
+                if (input === document.activeElement) {
+                  input.setSelectionRange(selectionStart, selectionEnd);
+                }
+              }, 0);
+            }}
+            onBlur={(e) => {
+              // Only mark as not typing if focus moves outside the comments section
+              // This allows focus to move to the send button without losing typing state
+              const relatedTarget = e.relatedTarget as HTMLElement;
+              const container = e.currentTarget.closest('.flex.flex-col');
+              if (!relatedTarget || !container?.contains(relatedTarget)) {
+                // Small delay to allow focus to move to send button
+                setTimeout(() => {
+                  if (document.activeElement !== commentInputRef.current && 
+                      document.activeElement !== e.currentTarget.closest('.p-3')?.querySelector('button')) {
+                    isTypingRef.current = false;
+                  }
+                }, 100);
+              }
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -1095,6 +1175,12 @@ export default function RealsPage() {
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't handle keyboard events if user is typing in an input/textarea
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+        return;
+      }
+      
       if (e.key === "ArrowUp") {
         e.preventDefault();
         goToPrev();

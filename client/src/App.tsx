@@ -301,16 +301,20 @@ function AppContent() {
                     </Link>
                   </DropdownMenuItem>
                   
-                  {/* Support Chat - Mobile only */}
-                  {isMobile && (
-                    <DropdownMenuItem 
-                      onClick={() => setSupportChatFullscreen(true)}
-                      data-testid="menu-support"
-                    >
-                      <Headphones className="w-4 h-4 mr-2" />
-                      {t("chat.liveSupport")}
-                    </DropdownMenuItem>
-                  )}
+                  {/* Support Chat */}
+                  <DropdownMenuItem 
+                    onClick={() => {
+                      if (isMobile) {
+                        setSupportChatFullscreen(true);
+                      } else {
+                        liveChatRef.current?.openChat();
+                      }
+                    }}
+                    data-testid="menu-support"
+                  >
+                    <Headphones className="w-4 h-4 mr-2" />
+                    {t("chat.liveSupport")}
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem 
                     className="text-destructive cursor-pointer" 

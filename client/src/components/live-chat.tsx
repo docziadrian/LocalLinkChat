@@ -138,26 +138,15 @@ export const LiveChat = forwardRef<LiveChatRef, LiveChatProps>(function LiveChat
 
   // On mobile, hide the floating chat button (it's accessed via profile dropdown instead)
   // Unless we're in fullscreen mode
+  // Also hide on tablets and small desktops - only show on XL+ screens
   if (!isOpen && !isFullscreen) {
-    // Hide on mobile
+    // Hide on mobile, tablet, and small desktop (< XL breakpoint)
     if (isMobile) {
       return null;
     }
     
     return (
-      <motion.div
-        initial={{ scale: 0 }}
-        animate={{ scale: 1 }}
-        className="fixed bottom-6 right-6 z-50"
-      >
-        <Button
-          onClick={() => setIsOpen(true)}
-          size="lg"
-          className="rounded-full w-14 h-14 shadow-lg hover:shadow-xl transition-shadow"
-        >
-          <Headphones className="w-6 h-6" />
-        </Button>
-      </motion.div>
+      <></>
     );
   }
 
@@ -292,13 +281,13 @@ export const LiveChat = forwardRef<LiveChatRef, LiveChatProps>(function LiveChat
     );
   }
 
-  // Minimized state (desktop only)
+  // Minimized state (desktop XL+ only)
   if (isMinimized && !isMobile) {
     return (
       <motion.div
         initial={{ y: 100, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        className="fixed bottom-6 right-6 z-50"
+        className="fixed bottom-6 right-6 z-50 hidden xl:block"
       >
         <Card
           onClick={() => setIsMinimized(false)}
@@ -340,13 +329,13 @@ export const LiveChat = forwardRef<LiveChatRef, LiveChatProps>(function LiveChat
     return null;
   }
 
-  // Full chat window
+  // Full chat window (XL+ only)
   return (
     <motion.div
       initial={{ y: 100, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       exit={{ y: 100, opacity: 0 }}
-      className="fixed bottom-6 right-6 z-50 w-80 sm:w-96"
+      className="fixed bottom-6 right-6 z-50 w-80 sm:w-96 hidden xl:block"
     >
       <Card className="flex flex-col h-[450px] sm:h-[500px] shadow-2xl">
         {/* Header */}

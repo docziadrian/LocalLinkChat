@@ -32,7 +32,8 @@
     "message": "Üzenet",
     "online": "Online",
     "offline": "Offline",
-    "connecting": "Kapcsolódás..."
+    "connecting": "Kapcsolódás...",
+    "settings": "Beállítások"
   },
   "auth": {
     "signIn": "Bejelentkezés",
@@ -291,7 +292,8 @@
     "noConnectionsToShare": "Nincs kapcsolat a megosztáshoz",
     "sendTo": "Küldés neki",
     "postShared": "Bejegyzés sikeresen megosztva!",
-    "sharedPost": "Megosztott veled egy bejegyzést"
+    "sharedPost": "Megosztott veled egy bejegyzést",
+    "recentPosts": "Legutóbbi bejegyzések"
   },
   "reals": {
     "title": "REALS",

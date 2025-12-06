@@ -32,7 +32,8 @@
     "message": "Nachricht",
     "online": "Online",
     "offline": "Offline",
-    "connecting": "Verbinden..."
+    "connecting": "Verbinden...",
+    "settings": "Einstellungen"
   },
   "auth": {
     "signIn": "Anmelden",
@@ -291,7 +292,8 @@
     "noConnectionsToShare": "Keine Verbindungen zum Teilen",
     "sendTo": "Senden an",
     "postShared": "Beitrag erfolgreich geteilt!",
-    "sharedPost": "Hat einen Beitrag mit Ihnen geteilt"
+    "sharedPost": "Hat einen Beitrag mit Ihnen geteilt",
+    "recentPosts": "Aktuelle Beiträge"
   },
   "reals": {
     "title": "REALS",
