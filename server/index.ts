@@ -16,38 +16,44 @@ declare module "http" {
 // CORS middleware - allow requests from same origin and configured origins
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  const allowedOrigins = process.env.ALLOWED_ORIGINS 
-    ? process.env.ALLOWED_ORIGINS.split(',')
-    : [req.headers.origin || 'http://localhost:5000'];
-  
+  const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(",")
+    : [req.headers.origin || "http://localhost:5000"];
+
   // Allow same-origin requests or configured origins
   if (!origin || allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    res.setHeader("Access-Control-Allow-Origin", origin || "*");
   }
-  
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-  res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
-  
+
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+  );
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, X-Requested-With"
+  );
+  res.setHeader("Access-Control-Max-Age", "86400"); // 24 hours
+
   // Handle preflight requests
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     return res.sendStatus(200);
   }
-  
+
   next();
 });
 
 app.use(
   express.json({
-    limit: '200mb', // Increase limit for JSON payloads
+    limit: "200mb", // Increase limit for JSON payloads
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     },
   })
 );
 
-app.use(express.urlencoded({ extended: false, limit: '200mb' })); // Increase limit for URL-encoded payloads
+app.use(express.urlencoded({ extended: false, limit: "200mb" })); // Increase limit for URL-encoded payloads
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -112,12 +118,12 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || "5000", 10);
-  
+
   // Increase server timeout for large file uploads (10 minutes)
   httpServer.timeout = 600000; // 10 minutes in milliseconds
   httpServer.keepAliveTimeout = 65000; // 65 seconds
   httpServer.headersTimeout = 66000; // 66 seconds (must be > keepAliveTimeout)
-  
+
   httpServer.listen(port, () => {
     log(`serving on port ${port}`);
   });

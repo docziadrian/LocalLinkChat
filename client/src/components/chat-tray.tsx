@@ -7,9 +7,29 @@ import { Input } from "@/components/ui/input";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card } from "@/components/ui/card";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { X, Minus, Send, ImagePlus, Check, CheckCheck, Smile, Trash2 } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  X,
+  Minus,
+  Send,
+  ImagePlus,
+  Check,
+  CheckCheck,
+  Smile,
+  Trash2,
+} from "lucide-react";
 import { ImageLightbox, useLightbox } from "@/components/image-lightbox";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
@@ -54,7 +74,7 @@ async function resizeImage(file: File): Promise<string> {
         const maxDimension = 800;
         let width = img.width;
         let height = img.height;
-        
+
         // Only resize if larger than max dimension
         if (width > maxDimension || height > maxDimension) {
           if (width > height) {
@@ -65,7 +85,7 @@ async function resizeImage(file: File): Promise<string> {
             height = maxDimension;
           }
         }
-        
+
         const canvas = document.createElement("canvas");
         canvas.width = width;
         canvas.height = height;
@@ -74,7 +94,7 @@ async function resizeImage(file: File): Promise<string> {
           reject(new Error("Failed to get canvas context"));
           return;
         }
-        
+
         ctx.drawImage(img, 0, 0, width, height);
         resolve(canvas.toDataURL("image/jpeg", 0.85));
       };
@@ -92,10 +112,17 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
   const { user: currentUser } = useAuth();
   const { lightboxState, openLightbox, closeLightbox } = useLightbox();
   const [openChats, setOpenChats] = useState<ChatWindow[]>([]);
-  const [chatMessages, setChatMessages] = useState<Record<string, DirectMessage[]>>({});
+  const [chatMessages, setChatMessages] = useState<
+    Record<string, DirectMessage[]>
+  >({});
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
-  const [selectedImages, setSelectedImages] = useState<Record<string, string>>({});
+  const [selectedImages, setSelectedImages] = useState<Record<string, string>>(
+    {}
+  );
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
+  const [typingPreviews, setTypingPreviews] = useState<Record<string, string>>(
+    {}
+  );
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [messageToDelete, setMessageToDelete] = useState<string | null>(null);
   const messagesEndRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -108,12 +135,13 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
     const handleMessage = (event: MessageEvent) => {
       try {
         const data = JSON.parse(event.data);
-        
+
         if (data.type === "direct_message") {
           const message = data.data as DirectMessage;
-          const otherUserId = message.senderId === currentUser?.id 
-            ? message.receiverId 
-            : message.senderId;
+          const otherUserId =
+            message.senderId === currentUser?.id
+              ? message.receiverId
+              : message.senderId;
 
           setChatMessages((prev) => ({
             ...prev,
@@ -121,8 +149,11 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
           }));
 
           // Check if this user's chat is open (not minimized) in the tray
-          const existingChat = openChats.find((c) => c.user.id === message.senderId);
-          const isChatOpenAndVisible = existingChat && !existingChat.isMinimized;
+          const existingChat = openChats.find(
+            (c) => c.user.id === message.senderId
+          );
+          const isChatOpenAndVisible =
+            existingChat && !existingChat.isMinimized;
 
           // Open chat if not open and message is from someone else
           if (message.senderId !== currentUser?.id) {
@@ -132,19 +163,25 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
           }
 
           // Sync with messages page
-          queryClient.invalidateQueries({ queryKey: ["messages", otherUserId] });
-          queryClient.invalidateQueries({ queryKey: ["/api/messages/conversations"] });
-          
+          queryClient.invalidateQueries({
+            queryKey: ["messages", otherUserId],
+          });
+          queryClient.invalidateQueries({
+            queryKey: ["/api/messages/conversations"],
+          });
+
           // Only update unread count if chat is NOT open/visible in tray
           // If chat is open, the message is considered "read"
           if (!isChatOpenAndVisible) {
-            queryClient.invalidateQueries({ queryKey: ["/api/messages/unread-count"] });
+            queryClient.invalidateQueries({
+              queryKey: ["/api/messages/unread-count"],
+            });
             onNewMessage?.(message);
           } else {
             // Mark the message as read since chat is open
-            fetch(`/api/messages/${otherUserId}/mark-read`, { 
-              method: "POST", 
-              credentials: "include" 
+            fetch(`/api/messages/${otherUserId}/mark-read`, {
+              method: "POST",
+              credentials: "include",
             }).catch(() => {});
           }
         }
@@ -153,22 +190,44 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
           const message = data.data as DirectMessage;
           setChatMessages((prev) => ({
             ...prev,
-            [message.receiverId]: [...(prev[message.receiverId] || []), message],
+            [message.receiverId]: [
+              ...(prev[message.receiverId] || []),
+              message,
+            ],
           }));
 
           // Sync with messages page
-          queryClient.invalidateQueries({ queryKey: ["messages", message.receiverId] });
-          queryClient.invalidateQueries({ queryKey: ["/api/messages/conversations"] });
+          queryClient.invalidateQueries({
+            queryKey: ["messages", message.receiverId],
+          });
+          queryClient.invalidateQueries({
+            queryKey: ["/api/messages/conversations"],
+          });
         }
 
         if (data.type === "typing") {
           if (data.isTyping) {
-            setTypingUsers((prev) => new Set([...Array.from(prev), data.userId]));
+            setTypingUsers(
+              (prev) => new Set([...Array.from(prev), data.userId])
+            );
+            // Store the typing preview content
+            if (data.content) {
+              setTypingPreviews((prev) => ({
+                ...prev,
+                [data.userId]: data.content,
+              }));
+            }
           } else {
             setTypingUsers((prev) => {
               const newSet = new Set(prev);
               newSet.delete(data.userId);
               return newSet;
+            });
+            // Clear typing preview when user stops typing
+            setTypingPreviews((prev) => {
+              const next = { ...prev };
+              delete next[data.userId];
+              return next;
             });
           }
         }
@@ -186,7 +245,9 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
   useEffect(() => {
     openChats.forEach((chat) => {
       if (!chat.isMinimized) {
-        messagesEndRefs.current[chat.id]?.scrollIntoView({ behavior: "smooth" });
+        messagesEndRefs.current[chat.id]?.scrollIntoView({
+          behavior: "smooth",
+        });
       }
     });
   }, [chatMessages, openChats, typingUsers]);
@@ -199,7 +260,10 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
           c.user.id === user.id ? { ...c, isMinimized: false } : c
         );
       }
-      const newChats = [{ id: user.id, user, isMinimized: false }, ...prev.slice(0, 2)];
+      const newChats = [
+        { id: user.id, user, isMinimized: false },
+        ...prev.slice(0, 2),
+      ];
       return newChats;
     });
 
@@ -208,28 +272,44 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
 
   const loadMessages = async (userId: string) => {
     try {
-      const res = await fetch(`/api/messages/${userId}`, { credentials: "include" });
+      const res = await fetch(`/api/messages/${userId}`, {
+        credentials: "include",
+      });
       if (res.ok) {
         const messages = await res.json();
         // Fetch reactions for each message
         const messagesWithReactions = await Promise.all(
           messages.map(async (msg: DirectMessage) => {
             try {
-              const reactionsRes = await fetch(`/api/messages/${msg.id}/reactions`, { credentials: "include" });
+              const reactionsRes = await fetch(
+                `/api/messages/${msg.id}/reactions`,
+                { credentials: "include" }
+              );
               if (reactionsRes.ok) {
                 const reactions = await reactionsRes.json();
                 return { ...msg, reactions };
               }
             } catch (e) {
-              console.error("Failed to fetch reactions for message:", msg.id, e);
+              console.error(
+                "Failed to fetch reactions for message:",
+                msg.id,
+                e
+              );
             }
             return msg;
           })
         );
-        setChatMessages((prev) => ({ ...prev, [userId]: messagesWithReactions }));
+        setChatMessages((prev) => ({
+          ...prev,
+          [userId]: messagesWithReactions,
+        }));
         // Messages are marked as read on the server, update unread count
-        queryClient.invalidateQueries({ queryKey: ["/api/messages/unread-count"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/messages/conversations"] });
+        queryClient.invalidateQueries({
+          queryKey: ["/api/messages/unread-count"],
+        });
+        queryClient.invalidateQueries({
+          queryKey: ["/api/messages/conversations"],
+        });
       }
     } catch (e) {
       console.error("Failed to load messages:", e);
@@ -257,19 +337,21 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
   const sendMessage = async (userId: string) => {
     const content = inputValues[userId]?.trim() || "";
     const imageData = selectedImages[userId];
-    
+
     if (!content && !imageData) return;
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
-    const messageContent = imageData 
+    const messageContent = imageData
       ? `[IMAGE]${imageData}[/IMAGE]${content ? `\n${content}` : ""}`
       : content;
 
-    wsRef.current.send(JSON.stringify({
-      type: "direct_message",
-      receiverId: userId,
-      content: messageContent,
-    }));
+    wsRef.current.send(
+      JSON.stringify({
+        type: "direct_message",
+        receiverId: userId,
+        content: messageContent,
+      })
+    );
 
     setInputValues((prev) => ({ ...prev, [userId]: "" }));
     setSelectedImages((prev) => {
@@ -277,24 +359,28 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
       delete next[userId];
       return next;
     });
-    
+
     setTimeout(() => {
       queryClient.invalidateQueries({ queryKey: ["messages", userId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/messages/conversations"] });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/messages/conversations"],
+      });
       loadMessages(userId);
     }, 500);
   };
-  
+
   // Handle sending a GIF
   const handleSendGif = (userId: string, gifUrl: string) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-    
-    wsRef.current.send(JSON.stringify({
-      type: "direct_message",
-      receiverId: userId,
-      content: `[GIF]${gifUrl}[/GIF]`,
-    }));
-    
+
+    wsRef.current.send(
+      JSON.stringify({
+        type: "direct_message",
+        receiverId: userId,
+        content: `[GIF]${gifUrl}[/GIF]`,
+      })
+    );
+
     setTimeout(() => {
       loadMessages(userId);
     }, 100);
@@ -302,21 +388,32 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
 
   const handleTyping = (userId: string, isTyping: boolean) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-    
-    wsRef.current.send(JSON.stringify({
-      type: "typing",
-      receiverId: userId,
-      isTyping,
-    }));
+
+    const content = inputValues[userId] || "";
+
+    wsRef.current.send(
+      JSON.stringify({
+        type: "typing",
+        receiverId: userId,
+        isTyping,
+        content: isTyping ? content : "", // Send the actual content when typing
+      })
+    );
   };
 
-  const handleImageSelect = async (userId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageSelect = async (
+    userId: string,
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const validTypes = ["image/png", "image/jpeg", "image/jpg"];
     if (!validTypes.includes(file.type)) {
-      toast({ title: "Only PNG, JPG, and JPEG images are allowed", variant: "destructive" });
+      toast({
+        title: "Only PNG, JPG, and JPEG images are allowed",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -348,8 +445,8 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
       const textContent = content.replace(/\[GIF\].*?\[\/GIF\]/, "").trim();
       return (
         <div>
-          <img 
-            src={gifUrl} 
+          <img
+            src={gifUrl}
             alt={t("messages.gifSent")}
             className="max-w-[120px] max-h-[120px] object-cover rounded-lg mb-1 cursor-pointer hover:opacity-90 transition-opacity"
             onClick={() => openLightbox(gifUrl, t("messages.gifSent"))}
@@ -358,7 +455,7 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
         </div>
       );
     }
-    
+
     // Check for image
     const imageMatch = content.match(/\[IMAGE\](.*?)\[\/IMAGE\]/);
     if (imageMatch) {
@@ -366,8 +463,8 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
       const textContent = content.replace(/\[IMAGE\].*?\[\/IMAGE\]/, "").trim();
       return (
         <div>
-          <img 
-            src={imageData} 
+          <img
+            src={imageData}
             alt={t("messages.imageSent")}
             className="max-w-[120px] max-h-[120px] object-cover rounded-lg mb-1 cursor-pointer hover:opacity-90 transition-opacity"
             onClick={() => openLightbox(imageData, t("messages.imageSent"))}
@@ -379,25 +476,35 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
     }
     return <p className="text-xs sm:text-sm">{content}</p>;
   };
-  
+
   // State for reaction popup
-  const [reactionPopupMsgId, setReactionPopupMsgId] = useState<string | null>(null);
-  
+  const [reactionPopupMsgId, setReactionPopupMsgId] = useState<string | null>(
+    null
+  );
+
   // GIF Picker component (simplified for tray)
-  function GifPickerTray({ onSelect, userId }: { onSelect: (gifUrl: string) => void; userId: string }) {
+  function GifPickerTray({
+    onSelect,
+    userId,
+  }: {
+    onSelect: (gifUrl: string) => void;
+    userId: string;
+  }) {
     const [searchQuery, setSearchQuery] = useState("");
     const [gifs, setGifs] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     const [isOpen, setIsOpen] = useState(false);
-    
+
     const fetchGifs = async (query: string = "") => {
       setLoading(true);
       try {
         const apiKey = "dc6zaTOxFJmzC";
-        const endpoint = query 
-          ? `https://api.giphy.com/v1/gifs/search?api_key=${apiKey}&q=${encodeURIComponent(query)}&limit=12&rating=g`
+        const endpoint = query
+          ? `https://api.giphy.com/v1/gifs/search?api_key=${apiKey}&q=${encodeURIComponent(
+              query
+            )}&limit=12&rating=g`
           : `https://api.giphy.com/v1/gifs/trending?api_key=${apiKey}&limit=12&rating=g`;
-        
+
         const res = await fetch(endpoint);
         const data = await res.json();
         setGifs(data.data || []);
@@ -426,7 +533,12 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
     return (
       <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>
-          <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-9 sm:w-9 flex-shrink-0" title={t("messages.sendGif")}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 sm:h-9 sm:w-9 flex-shrink-0"
+            title={t("messages.sendGif")}
+          >
             <span className="text-xs sm:text-sm font-semibold">GIF</span>
           </Button>
         </PopoverTrigger>
@@ -443,7 +555,9 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
                 <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
               </div>
             ) : gifs.length === 0 ? (
-              <p className="text-center text-muted-foreground py-4 text-xs">{t("messages.noGifsFound")}</p>
+              <p className="text-center text-muted-foreground py-4 text-xs">
+                {t("messages.noGifsFound")}
+              </p>
             ) : (
               <div className="grid grid-cols-2 gap-1.5">
                 {gifs.map((gif) => (
@@ -471,14 +585,17 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
       </Popover>
     );
   }
-  
+
   // Handle sending a reaction
   const handleReaction = async (messageId: string, emoji: string) => {
     try {
-      await apiRequest("POST", `/api/messages/${messageId}/reactions`, { emoji, messageType: 'direct' });
+      await apiRequest("POST", `/api/messages/${messageId}/reactions`, {
+        emoji,
+        messageType: "direct",
+      });
       setReactionPopupMsgId(null);
       // Refresh messages to get updated reactions
-      openChats.forEach(chat => {
+      openChats.forEach((chat) => {
         loadMessages(chat.user.id);
       });
     } catch (error) {
@@ -486,7 +603,7 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
       toast({ title: t("errors.general"), variant: "destructive" });
     }
   };
-  
+
   // Delete message mutation
   const deleteMessageMutation = useMutation({
     mutationFn: async (messageId: string) => {
@@ -497,7 +614,7 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
       setDeleteDialogOpen(false);
       setMessageToDelete(null);
       // Refresh messages
-      openChats.forEach(chat => {
+      openChats.forEach((chat) => {
         loadMessages(chat.user.id);
       });
     },
@@ -582,9 +699,13 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-xs sm:text-sm truncate">{chat.user.name}</p>
+                    <p className="font-medium text-xs sm:text-sm truncate">
+                      {chat.user.name}
+                    </p>
                     <p className="text-[10px] sm:text-xs text-muted-foreground">
-                      {chat.user.isOnline ? t("common.online") : t("common.offline")}
+                      {chat.user.isOnline
+                        ? t("common.online")
+                        : t("common.offline")}
                     </p>
                   </div>
                   <div className="flex gap-1">
@@ -614,7 +735,9 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
                       <div
                         key={msg.id}
                         className={`flex ${
-                          msg.senderId === currentUser?.id ? "justify-end" : "justify-start"
+                          msg.senderId === currentUser?.id
+                            ? "justify-end"
+                            : "justify-start"
                         }`}
                       >
                         <div className="flex flex-col max-w-[85%]">
@@ -633,15 +756,31 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
                                 </p>
                                 {/* Read/unread status indicator for sent messages */}
                                 {msg.senderId === currentUser?.id && (
-                                  <span className={`inline-flex items-center justify-center rounded-full p-0.5 ${msg.isRead ? 'text-green-500 bg-black/90' : 'text-blue-500 bg-black/90'}`}>
-                                    {msg.isRead ? <CheckCheck className="w-3 h-3" /> : <Check className="w-3 h-3" />}
+                                  <span
+                                    className={`inline-flex items-center justify-center rounded-full p-0.5 ${
+                                      msg.isRead
+                                        ? "text-green-500 bg-black/90"
+                                        : "text-blue-500 bg-black/90"
+                                    }`}
+                                  >
+                                    {msg.isRead ? (
+                                      <CheckCheck className="w-3 h-3" />
+                                    ) : (
+                                      <Check className="w-3 h-3" />
+                                    )}
                                   </span>
                                 )}
                               </div>
                             </div>
-                            
+
                             {/* Action buttons - delete and reaction */}
-                            <div className={`absolute ${msg.senderId === currentUser?.id ? '-left-12' : '-right-12'} top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity`}>
+                            <div
+                              className={`absolute ${
+                                msg.senderId === currentUser?.id
+                                  ? "-left-12"
+                                  : "-right-12"
+                              } top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity`}
+                            >
                               {msg.senderId === currentUser?.id && (
                                 <button
                                   onClick={() => {
@@ -654,21 +793,29 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
                                   <Trash2 className="w-3 h-3 text-destructive" />
                                 </button>
                               )}
-                              <Popover 
-                                open={reactionPopupMsgId === msg.id} 
-                                onOpenChange={(open) => setReactionPopupMsgId(open ? msg.id : null)}
+                              <Popover
+                                open={reactionPopupMsgId === msg.id}
+                                onOpenChange={(open) =>
+                                  setReactionPopupMsgId(open ? msg.id : null)
+                                }
                               >
                                 <PopoverTrigger asChild>
                                   <button className="p-0.5 rounded hover:bg-muted/50 transition-colors">
                                     <Smile className="w-3 h-3 text-muted-foreground" />
                                   </button>
                                 </PopoverTrigger>
-                                <PopoverContent className="w-auto p-1" side="top" align="center">
+                                <PopoverContent
+                                  className="w-auto p-1"
+                                  side="top"
+                                  align="center"
+                                >
                                   <div className="flex gap-0.5">
                                     {EMOJI_REACTIONS.map((emoji) => (
                                       <button
                                         key={emoji}
-                                        onClick={() => handleReaction(msg.id, emoji)}
+                                        onClick={() =>
+                                          handleReaction(msg.id, emoji)
+                                        }
                                         className="text-base p-1 rounded hover:bg-muted transition-colors"
                                       >
                                         {emoji}
@@ -679,38 +826,69 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
                               </Popover>
                             </div>
                           </div>
-                          
+
                           {/* Reactions display */}
-                          {(msg as any).reactions && Array.isArray((msg as any).reactions) && (msg as any).reactions.length > 0 && (
-                            <div className="flex gap-0.5 mt-0.5">
-                              {Object.entries(
-                                ((msg as any).reactions as Array<{ emoji: string; user?: User }>).reduce((acc: Record<string, number>, r) => {
-                                  acc[r.emoji] = (acc[r.emoji] || 0) + 1;
-                                  return acc;
-                                }, {})
-                              ).map(([emoji, count]) => (
-                                <span key={emoji} className="inline-flex items-center gap-0.5 bg-muted/50 rounded-full px-1 py-0.5 text-[10px]">
-                                  {emoji}
-                                  {(count as number) > 1 && <span className="text-muted-foreground">{count as number}</span>}
-                                </span>
-                              ))}
-                            </div>
-                          )}
+                          {(msg as any).reactions &&
+                            Array.isArray((msg as any).reactions) &&
+                            (msg as any).reactions.length > 0 && (
+                              <div className="flex gap-0.5 mt-0.5">
+                                {Object.entries(
+                                  (
+                                    (msg as any).reactions as Array<{
+                                      emoji: string;
+                                      user?: User;
+                                    }>
+                                  ).reduce((acc: Record<string, number>, r) => {
+                                    acc[r.emoji] = (acc[r.emoji] || 0) + 1;
+                                    return acc;
+                                  }, {})
+                                ).map(([emoji, count]) => (
+                                  <span
+                                    key={emoji}
+                                    className="inline-flex items-center gap-0.5 bg-muted/50 rounded-full px-1 py-0.5 text-[10px]"
+                                  >
+                                    {emoji}
+                                    {(count as number) > 1 && (
+                                      <span className="text-muted-foreground">
+                                        {count as number}
+                                      </span>
+                                    )}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                         </div>
                       </div>
                     ))}
                     {typingUsers.has(chat.user.id) && (
                       <div className="flex justify-start">
-                        <div className="bg-muted px-3 py-2 rounded-2xl rounded-bl-md">
-                          <div className="flex gap-1">
-                            <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                            <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                            <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-                          </div>
+                        <div className="bg-muted/60 px-3 py-2 rounded-2xl rounded-bl-md border border-muted-foreground/20">
+                          {typingPreviews[chat.user.id] ? (
+                            <p className="text-xs sm:text-sm text-muted-foreground/70 italic">
+                              {typingPreviews[chat.user.id]}
+                            </p>
+                          ) : (
+                            <div className="flex gap-1">
+                              <span
+                                className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-muted-foreground/50 rounded-full animate-bounce"
+                                style={{ animationDelay: "0ms" }}
+                              />
+                              <span
+                                className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-muted-foreground/50 rounded-full animate-bounce"
+                                style={{ animationDelay: "150ms" }}
+                              />
+                              <span
+                                className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-muted-foreground/50 rounded-full animate-bounce"
+                                style={{ animationDelay: "300ms" }}
+                              />
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
-                    <div ref={(el) => (messagesEndRefs.current[chat.id] = el)} />
+                    <div
+                      ref={(el) => (messagesEndRefs.current[chat.id] = el)}
+                    />
                   </div>
                 </ScrollArea>
 
@@ -718,9 +896,9 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
                 {selectedImages[chat.user.id] && (
                   <div className="px-2 sm:px-3 pt-1">
                     <div className="relative inline-block">
-                      <img 
-                        src={selectedImages[chat.user.id]} 
-                        alt="Preview" 
+                      <img
+                        src={selectedImages[chat.user.id]}
+                        alt="Preview"
                         className="w-16 h-16 object-cover rounded-lg border"
                       />
                       <Button
@@ -749,18 +927,23 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 sm:h-9 sm:w-9 flex-shrink-0"
-                      onClick={() => fileInputRefs.current[chat.user.id]?.click()}
+                      onClick={() =>
+                        fileInputRefs.current[chat.user.id]?.click()
+                      }
                     >
                       <ImagePlus className="w-3 h-3 sm:w-4 sm:h-4" />
                     </Button>
-                    <GifPickerTray 
-                      onSelect={(gifUrl) => handleSendGif(chat.user.id, gifUrl)} 
+                    <GifPickerTray
+                      onSelect={(gifUrl) => handleSendGif(chat.user.id, gifUrl)}
                       userId={chat.user.id}
                     />
                     <Input
                       value={inputValues[chat.user.id] || ""}
                       onChange={(e) => {
-                        setInputValues((prev) => ({ ...prev, [chat.user.id]: e.target.value }));
+                        setInputValues((prev) => ({
+                          ...prev,
+                          [chat.user.id]: e.target.value,
+                        }));
                         handleTyping(chat.user.id, e.target.value.length > 0);
                       }}
                       onKeyDown={(e) => {
@@ -777,7 +960,10 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
                       size="icon"
                       className="h-8 w-8 sm:h-9 sm:w-9"
                       onClick={() => sendMessage(chat.user.id)}
-                      disabled={!inputValues[chat.user.id]?.trim() && !selectedImages[chat.user.id]}
+                      disabled={
+                        !inputValues[chat.user.id]?.trim() &&
+                        !selectedImages[chat.user.id]
+                      }
                     >
                       <Send className="w-3 h-3 sm:w-4 sm:h-4" />
                     </Button>
@@ -796,12 +982,15 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
         isOpen={lightboxState.isOpen}
         onClose={closeLightbox}
       />
-      
+
       {/* Delete Message Confirmation Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={(open) => {
-        setDeleteDialogOpen(open);
-        if (!open) setMessageToDelete(null);
-      }}>
+      <Dialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open);
+          if (!open) setMessageToDelete(null);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t("messages.deleteMessage")}</DialogTitle>
@@ -810,12 +999,17 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+            >
               {t("common.cancel")}
             </Button>
             <Button
               variant="destructive"
-              onClick={() => messageToDelete && deleteMessageMutation.mutate(messageToDelete)}
+              onClick={() =>
+                messageToDelete && deleteMessageMutation.mutate(messageToDelete)
+              }
               disabled={deleteMessageMutation.isPending}
             >
               {t("common.delete")}

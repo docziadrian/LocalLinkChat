@@ -39,32 +39,67 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Send, ArrowLeft, MessageSquare, Users, ExternalLink, MoreVertical, UserX, ImagePlus, X, Trash2, Plus, LogOut, UserPlus, Smile, Check, CheckCheck, Image as ImageIcon } from "lucide-react";
+import {
+  Send,
+  ArrowLeft,
+  MessageSquare,
+  Users,
+  ExternalLink,
+  MoreVertical,
+  UserX,
+  ImagePlus,
+  X,
+  Trash2,
+  Plus,
+  LogOut,
+  UserPlus,
+  Smile,
+  Check,
+  CheckCheck,
+  Image as ImageIcon,
+} from "lucide-react";
 import { ImageLightbox, useLightbox } from "@/components/image-lightbox";
 import { Link } from "wouter";
 import { CreateGroupDialog } from "@/components/create-group-dialog";
 import { AddGroupMembersDialog } from "@/components/add-group-members-dialog";
-import type { User, DirectMessage, Connection, Group, GroupMember, GroupMessage, MessageReaction, MessageReadReceipt } from "@shared/schema";
+import type {
+  User,
+  DirectMessage,
+  Connection,
+  Group,
+  GroupMember,
+  GroupMessage,
+  MessageReaction,
+  MessageReadReceipt,
+} from "@shared/schema";
 
 // Supported emoji reactions
 const EMOJI_REACTIONS = ["😂", "❤", "👍", "😒", "😠"] as const;
 
 // GIF Picker component using GIPHY
-function GifPicker({ onSelect, t }: { onSelect: (gifUrl: string) => void; t: (key: string) => string }) {
+function GifPicker({
+  onSelect,
+  t,
+}: {
+  onSelect: (gifUrl: string) => void;
+  t: (key: string) => string;
+}) {
   const [searchQuery, setSearchQuery] = useState("");
   const [gifs, setGifs] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
-  
+
   // Fetch trending or search GIFs (using GIPHY's public beta key)
   const fetchGifs = async (query: string = "") => {
     setLoading(true);
     try {
       const apiKey = "1pXpfajboP7Ask8g0gsXvbFCr3zUemb4"; // GIPHY public beta key
-      const endpoint = query 
-        ? `https://api.giphy.com/v1/gifs/search?api_key=${apiKey}&q=${encodeURIComponent(query)}&limit=20&rating=g`
+      const endpoint = query
+        ? `https://api.giphy.com/v1/gifs/search?api_key=${apiKey}&q=${encodeURIComponent(
+            query
+          )}&limit=20&rating=g`
         : `https://api.giphy.com/v1/gifs/trending?api_key=${apiKey}&limit=20&rating=g`;
-      
+
       const res = await fetch(endpoint);
       const data = await res.json();
       setGifs(data.data || []);
@@ -110,7 +145,9 @@ function GifPicker({ onSelect, t }: { onSelect: (gifUrl: string) => void; t: (ke
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
             </div>
           ) : gifs.length === 0 ? (
-            <p className="text-center text-muted-foreground py-4">{t("messages.noGifsFound")}</p>
+            <p className="text-center text-muted-foreground py-4">
+              {t("messages.noGifsFound")}
+            </p>
           ) : (
             <div className="grid grid-cols-2 gap-2">
               {gifs.map((gif) => (
@@ -140,24 +177,24 @@ function GifPicker({ onSelect, t }: { onSelect: (gifUrl: string) => void; t: (ke
 }
 
 // Emoji reaction picker popup
-function EmojiReactionPicker({ 
-  messageId, 
+function EmojiReactionPicker({
+  messageId,
   messageType,
   onReact,
   existingReaction,
-}: { 
+}: {
   messageId: string;
-  messageType: 'direct' | 'group';
+  messageType: "direct" | "group";
   onReact: (emoji: string) => void;
   existingReaction?: string;
 }) {
   const [isOpen, setIsOpen] = useState(false);
-  
+
   const handleReact = (emoji: string) => {
     onReact(emoji);
     setIsOpen(false);
   };
-  
+
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
@@ -172,7 +209,7 @@ function EmojiReactionPicker({
               key={emoji}
               onClick={() => handleReact(emoji)}
               className={`text-xl p-1.5 rounded hover:bg-muted transition-colors ${
-                existingReaction === emoji ? 'bg-primary/20' : ''
+                existingReaction === emoji ? "bg-primary/20" : ""
               }`}
             >
               {emoji}
@@ -185,9 +222,13 @@ function EmojiReactionPicker({
 }
 
 // Message reactions display
-function MessageReactionsDisplay({ reactions }: { reactions: Array<{ emoji: string; user: User }> }) {
+function MessageReactionsDisplay({
+  reactions,
+}: {
+  reactions: Array<{ emoji: string; user: User }>;
+}) {
   if (reactions.length === 0) return null;
-  
+
   // Group reactions by emoji
   const grouped = reactions.reduce((acc, r) => {
     if (!acc[r.emoji]) acc[r.emoji] = [];
@@ -203,11 +244,13 @@ function MessageReactionsDisplay({ reactions }: { reactions: Array<{ emoji: stri
             <TooltipTrigger asChild>
               <span className="inline-flex items-center gap-0.5 bg-muted/50 rounded-full px-1.5 py-0.5 text-xs">
                 {emoji}
-                {users.length > 1 && <span className="text-muted-foreground">{users.length}</span>}
+                {users.length > 1 && (
+                  <span className="text-muted-foreground">{users.length}</span>
+                )}
               </span>
             </TooltipTrigger>
             <TooltipContent>
-              <p>{users.map(u => u.fullName || u.name).join(", ")}</p>
+              <p>{users.map((u) => u.fullName || u.name).join(", ")}</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -217,19 +260,19 @@ function MessageReactionsDisplay({ reactions }: { reactions: Array<{ emoji: stri
 }
 
 // Read receipt indicator
-function ReadReceiptIndicator({ 
-  isRead, 
+function ReadReceiptIndicator({
+  isRead,
   readReceipts,
   isSender,
   t,
-}: { 
+}: {
   isRead: boolean;
   readReceipts: Array<{ user: User; readAt: string }>;
   isSender: boolean;
   t: (key: string) => string;
 }) {
   if (!isSender) return null;
-  
+
   if (readReceipts.length > 0) {
     return (
       <TooltipProvider>
@@ -250,7 +293,9 @@ function ReadReceiptIndicator({
                       {(r.user.fullName || r.user.name || "").charAt(0)}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="text-xs">{r.user.fullName || r.user.name}</span>
+                  <span className="text-xs">
+                    {r.user.fullName || r.user.name}
+                  </span>
                 </div>
               ))}
             </div>
@@ -259,10 +304,18 @@ function ReadReceiptIndicator({
       </TooltipProvider>
     );
   }
-  
+
   return (
-    <span className={`inline-flex items-center justify-center text-xs rounded-full p-0.5 ${isRead ? 'text-green-500 bg-black/90' : 'text-blue-500 bg-black/90'}`}>
-      {isRead ? <CheckCheck className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+    <span
+      className={`inline-flex items-center justify-center text-xs rounded-full p-0.5 ${
+        isRead ? "text-green-500 bg-black/90" : "text-blue-500 bg-black/90"
+      }`}
+    >
+      {isRead ? (
+        <CheckCheck className="w-4 h-4" />
+      ) : (
+        <Check className="w-4 h-4" />
+      )}
     </span>
   );
 }
@@ -342,7 +395,7 @@ async function resizeImage(file: File): Promise<string> {
         const maxDimension = 800;
         let width = img.width;
         let height = img.height;
-        
+
         // Only resize if larger than max dimension
         if (width > maxDimension || height > maxDimension) {
           if (width > height) {
@@ -353,7 +406,7 @@ async function resizeImage(file: File): Promise<string> {
             height = maxDimension;
           }
         }
-        
+
         const canvas = document.createElement("canvas");
         canvas.width = width;
         canvas.height = height;
@@ -362,7 +415,7 @@ async function resizeImage(file: File): Promise<string> {
           reject(new Error("Failed to get canvas context"));
           return;
         }
-        
+
         ctx.drawImage(img, 0, 0, width, height);
         resolve(canvas.toDataURL("image/jpeg", 0.85));
       };
@@ -381,10 +434,15 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
   const openChat = useOpenChat();
   const isMobile = useIsMobile();
   const { lightboxState, openLightbox, closeLightbox } = useLightbox();
-  
+
   // Long press state for mobile message actions
-  const [longPressMessageId, setLongPressMessageId] = useState<string | null>(null);
-  const [longPressPosition, setLongPressPosition] = useState<{ x: number; y: number } | null>(null);
+  const [longPressMessageId, setLongPressMessageId] = useState<string | null>(
+    null
+  );
+  const [longPressPosition, setLongPressPosition] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [activeTab, setActiveTab] = useState<"direct" | "groups">("direct");
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -395,6 +453,9 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
   const [createGroupDialogOpen, setCreateGroupDialogOpen] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
+  const [typingPreviews, setTypingPreviews] = useState<Record<string, string>>(
+    {}
+  );
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [messageToDelete, setMessageToDelete] = useState<string | null>(null);
   const [addMembersDialogOpen, setAddMembersDialogOpen] = useState(false);
@@ -404,33 +465,45 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Get accepted connections
-  const { data: acceptedConnections = [], isLoading: connectionsLoading } = useQuery<
-    (Connection & { otherUser: User })[]
-  >({
-    queryKey: ["/api/connections/accepted"],
-  });
+  const { data: acceptedConnections = [], isLoading: connectionsLoading } =
+    useQuery<(Connection & { otherUser: User })[]>({
+      queryKey: ["/api/connections/accepted"],
+    });
 
   // Get conversations
-  const { data: conversations = [], isLoading: conversationsLoading } = useQuery<ConversationWithUser[]>({
-    queryKey: ["/api/messages/conversations"],
-  });
+  const { data: conversations = [], isLoading: conversationsLoading } =
+    useQuery<ConversationWithUser[]>({
+      queryKey: ["/api/messages/conversations"],
+    });
 
   // Get user's groups
-  const { data: groups = [], isLoading: groupsLoading, refetch: refetchGroups } = useQuery<GroupWithDetails[]>({
+  const {
+    data: groups = [],
+    isLoading: groupsLoading,
+    refetch: refetchGroups,
+  } = useQuery<GroupWithDetails[]>({
     queryKey: ["/api/groups"],
   });
 
   // Get group invitations
-  const { data: groupInvitations = [], refetch: refetchInvitations } = useQuery<GroupInvitation[]>({
+  const { data: groupInvitations = [], refetch: refetchInvitations } = useQuery<
+    GroupInvitation[]
+  >({
     queryKey: ["/api/groups/invitations"],
   });
 
   // Get messages for selected group
-  const { data: groupMessages = [], isLoading: groupMessagesLoading, refetch: refetchGroupMessages } = useQuery<GroupMessageWithSender[]>({
+  const {
+    data: groupMessages = [],
+    isLoading: groupMessagesLoading,
+    refetch: refetchGroupMessages,
+  } = useQuery<GroupMessageWithSender[]>({
     queryKey: ["/api/groups", selectedGroupId, "messages"],
     queryFn: async () => {
       if (!selectedGroupId) return [];
-      const res = await fetch(`/api/groups/${selectedGroupId}/messages`, { credentials: "include" });
+      const res = await fetch(`/api/groups/${selectedGroupId}/messages`, {
+        credentials: "include",
+      });
       if (!res.ok) throw new Error("Failed to fetch group messages");
       return res.json();
     },
@@ -438,14 +511,22 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
   });
 
   // Get selected group details
-  const selectedGroup = selectedGroupId ? groups.find(g => g.id === selectedGroupId) : null;
+  const selectedGroup = selectedGroupId
+    ? groups.find((g) => g.id === selectedGroupId)
+    : null;
 
   // Get messages for selected user
-  const { data: messages = [], isLoading: messagesLoading, refetch: refetchMessages } = useQuery<DirectMessage[]>({
+  const {
+    data: messages = [],
+    isLoading: messagesLoading,
+    refetch: refetchMessages,
+  } = useQuery<DirectMessage[]>({
     queryKey: ["messages", selectedUserId],
     queryFn: async () => {
       if (!selectedUserId) return [];
-      const res = await fetch(`/api/messages/${selectedUserId}`, { credentials: "include" });
+      const res = await fetch(`/api/messages/${selectedUserId}`, {
+        credentials: "include",
+      });
       if (!res.ok) {
         if (res.status === 403) {
           return [];
@@ -462,15 +543,25 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
     if (selectedUserId && messages.length > 0) {
       // Messages are marked as read on the server when fetched
       // Invalidate unread count to update sidebar badge
-      queryClient.invalidateQueries({ queryKey: ["/api/messages/unread-count"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/messages/conversations"] });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/messages/unread-count"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/messages/conversations"],
+      });
     }
   }, [selectedUserId, messages.length]);
 
   const sendMutation = useMutation({
-    mutationFn: async ({ content, imageData }: { content: string; imageData?: string }) => {
+    mutationFn: async ({
+      content,
+      imageData,
+    }: {
+      content: string;
+      imageData?: string;
+    }) => {
       if (!selectedUserId || !currentUser) return;
-      const messageContent = imageData 
+      const messageContent = imageData
         ? `[IMAGE]${imageData}[/IMAGE]${content ? `\n${content}` : ""}`
         : content;
       return apiRequest("POST", "/api/messages", {
@@ -482,8 +573,12 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
       setMessageInput("");
       setSelectedImage(null);
       refetchMessages();
-      queryClient.invalidateQueries({ queryKey: ["/api/messages/conversations"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/messages/unread-count"] });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/messages/conversations"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/messages/unread-count"],
+      });
       // Restore focus to input after sending
       setTimeout(() => messageInputRef.current?.focus(), 0);
     },
@@ -499,7 +594,9 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
       setDeleteDialogOpen(false);
       setMessageToDelete(null);
       refetchMessages();
-      queryClient.invalidateQueries({ queryKey: ["/api/messages/conversations"] });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/messages/conversations"],
+      });
     },
     onError: () => {
       toast({ title: t("errors.general"), variant: "destructive" });
@@ -510,7 +607,7 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
   const removeConnectionMutation = useMutation({
     mutationFn: async () => {
       const connection = acceptedConnections.find(
-        c => c.otherUser.id === selectedUserId
+        (c) => c.otherUser.id === selectedUserId
       );
       if (!connection) throw new Error("Connection not found");
       return apiRequest("DELETE", `/api/connections/${connection.id}`);
@@ -519,8 +616,12 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
       toast({ title: t("messages.connectionRemoved") });
       setSelectedUserId(null);
       setRemoveDialogOpen(false);
-      queryClient.invalidateQueries({ queryKey: ["/api/connections/accepted"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/messages/conversations"] });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/connections/accepted"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/messages/conversations"],
+      });
     },
     onError: () => {
       toast({ title: t("errors.general"), variant: "destructive" });
@@ -531,7 +632,9 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
   const sendGroupMessageMutation = useMutation({
     mutationFn: async ({ content }: { content: string }) => {
       if (!selectedGroupId || !currentUser) return;
-      return apiRequest("POST", `/api/groups/${selectedGroupId}/messages`, { content });
+      return apiRequest("POST", `/api/groups/${selectedGroupId}/messages`, {
+        content,
+      });
     },
     onSuccess: () => {
       setMessageInput("");
@@ -597,24 +700,28 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
   // Refetch messages periodically when a user is selected
   useEffect(() => {
     if (!selectedUserId) return;
-    
+
     const interval = setInterval(() => {
       refetchMessages();
-      queryClient.invalidateQueries({ queryKey: ["/api/messages/conversations"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/messages/unread-count"] });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/messages/conversations"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/messages/unread-count"],
+      });
     }, 3000);
-    
+
     return () => clearInterval(interval);
   }, [selectedUserId, refetchMessages]);
 
   // Refetch group messages periodically when a group is selected
   useEffect(() => {
     if (!selectedGroupId) return;
-    
+
     const interval = setInterval(() => {
       refetchGroupMessages();
     }, 3000);
-    
+
     return () => clearInterval(interval);
   }, [selectedGroupId, refetchGroupMessages]);
 
@@ -627,12 +734,27 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
         const data = JSON.parse(event.data);
         if (data.type === "typing") {
           if (data.isTyping) {
-            setTypingUsers((prev) => new Set([...Array.from(prev), data.userId]));
+            setTypingUsers(
+              (prev) => new Set([...Array.from(prev), data.userId])
+            );
+            // Store the typing preview content
+            if (data.content) {
+              setTypingPreviews((prev) => ({
+                ...prev,
+                [data.userId]: data.content,
+              }));
+            }
           } else {
             setTypingUsers((prev) => {
               const newSet = new Set(prev);
               newSet.delete(data.userId);
               return newSet;
+            });
+            // Clear typing preview when user stops typing
+            setTypingPreviews((prev) => {
+              const next = { ...prev };
+              delete next[data.userId];
+              return next;
             });
           }
         }
@@ -648,24 +770,32 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
 
   // Send typing indicator
   const handleTyping = (isTyping: boolean) => {
-    if (!wsRef?.current || wsRef.current.readyState !== WebSocket.OPEN || !selectedUserId) return;
-    
-    wsRef.current.send(JSON.stringify({
-      type: "typing",
-      receiverId: selectedUserId,
-      isTyping,
-    }));
+    if (
+      !wsRef?.current ||
+      wsRef.current.readyState !== WebSocket.OPEN ||
+      !selectedUserId
+    )
+      return;
+
+    wsRef.current.send(
+      JSON.stringify({
+        type: "typing",
+        receiverId: selectedUserId,
+        isTyping,
+        content: isTyping ? messageInput : "", // Send the actual content when typing
+      })
+    );
   };
 
   // Handle input change with typing indicator
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setMessageInput(e.target.value);
-    
+
     // Clear existing timeout
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }
-    
+
     // Send typing started
     if (e.target.value.length > 0) {
       handleTyping(true);
@@ -685,7 +815,10 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
         sendGroupMessageMutation.mutate({ content: messageInput.trim() });
       } else {
         // Sending direct message
-        sendMutation.mutate({ content: messageInput.trim(), imageData: selectedImage || undefined });
+        sendMutation.mutate({
+          content: messageInput.trim(),
+          imageData: selectedImage || undefined,
+        });
       }
     }
   };
@@ -697,7 +830,10 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
     // Validate file type
     const validTypes = ["image/png", "image/jpeg", "image/jpg"];
     if (!validTypes.includes(file.type)) {
-      toast({ title: "Only PNG, JPG, and JPEG images are allowed", variant: "destructive" });
+      toast({
+        title: "Only PNG, JPG, and JPEG images are allowed",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -716,15 +852,16 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
     }
   };
 
-  const selectedUser = selectedUserId 
-    ? (acceptedConnections.find(c => c.otherUser.id === selectedUserId)?.otherUser ||
-       conversations.find(c => c.otherUser.id === selectedUserId)?.otherUser)
+  const selectedUser = selectedUserId
+    ? acceptedConnections.find((c) => c.otherUser.id === selectedUserId)
+        ?.otherUser ||
+      conversations.find((c) => c.otherUser.id === selectedUserId)?.otherUser
     : null;
 
   // Combine connected users and users with existing conversations
-  const allContacts = [...acceptedConnections.map(c => c.otherUser)];
-  conversations.forEach(conv => {
-    if (!allContacts.find(u => u.id === conv.otherUser.id)) {
+  const allContacts = [...acceptedConnections.map((c) => c.otherUser)];
+  conversations.forEach((conv) => {
+    if (!allContacts.find((u) => u.id === conv.otherUser.id)) {
       allContacts.push(conv.otherUser);
     }
   });
@@ -743,18 +880,22 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
 
   // Mobile: show either contacts list or chat
   // Desktop: show both side by side
-  const showChat = (selectedUserId && selectedUser) || (selectedGroupId && selectedGroup);
+  const showChat =
+    (selectedUserId && selectedUser) || (selectedGroupId && selectedGroup);
 
   // Long press handlers for mobile
-  const handleTouchStart = useCallback((e: React.TouchEvent, messageId: string, senderId: string) => {
-    if (!isMobile) return;
-    
-    const touch = e.touches[0];
-    longPressTimerRef.current = setTimeout(() => {
-      setLongPressMessageId(messageId);
-      setLongPressPosition({ x: touch.clientX, y: touch.clientY });
-    }, 500); // 500ms for long press
-  }, [isMobile]);
+  const handleTouchStart = useCallback(
+    (e: React.TouchEvent, messageId: string, senderId: string) => {
+      if (!isMobile) return;
+
+      const touch = e.touches[0];
+      longPressTimerRef.current = setTimeout(() => {
+        setLongPressMessageId(messageId);
+        setLongPressPosition({ x: touch.clientX, y: touch.clientY });
+      }, 500); // 500ms for long press
+    },
+    [isMobile]
+  );
 
   const handleTouchEnd = useCallback(() => {
     if (longPressTimerRef.current) {
@@ -784,11 +925,11 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
       const textContent = content.replace(/\[GIF\].*?\[\/GIF\]/, "").trim();
       return (
         <div>
-          <img 
-            src={gifUrl} 
-            alt={t("messages.gifSent")} 
+          <img
+            src={gifUrl}
+            alt={t("messages.gifSent")}
             className={`rounded-lg mb-1 cursor-pointer hover:opacity-90 transition-opacity ${
-              isMobile ? 'w-[50px] h-[50px] object-cover' : 'max-w-[200px]'
+              isMobile ? "w-[50px] h-[50px] object-cover" : "max-w-[200px]"
             }`}
             onClick={() => openLightbox(gifUrl, t("messages.gifSent"))}
           />
@@ -796,7 +937,7 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
         </div>
       );
     }
-    
+
     // Check for image
     const imageMatch = content.match(/\[IMAGE\](.*?)\[\/IMAGE\]/);
     if (imageMatch) {
@@ -804,11 +945,11 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
       const textContent = content.replace(/\[IMAGE\].*?\[\/IMAGE\]/, "").trim();
       return (
         <div>
-          <img 
-            src={imageData} 
-            alt={t("messages.imageSent")} 
+          <img
+            src={imageData}
+            alt={t("messages.imageSent")}
             className={`rounded-lg mb-1 cursor-pointer hover:opacity-90 transition-opacity object-cover ${
-              isMobile ? 'w-[50px] h-[50px]' : 'max-w-[200px] max-h-[200px]'
+              isMobile ? "w-[50px] h-[50px]" : "max-w-[200px] max-h-[200px]"
             }`}
             onClick={() => openLightbox(imageData, t("messages.imageSent"))}
             title={t("messages.clickToZoom")}
@@ -819,7 +960,7 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
     }
     return <p className="text-sm">{content}</p>;
   };
-  
+
   // Handle sending a GIF
   const handleSendGif = (gifUrl: string) => {
     if (selectedGroupId) {
@@ -831,8 +972,19 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
 
   // React to a message
   const reactToMessageMutation = useMutation({
-    mutationFn: async ({ messageId, emoji, messageType }: { messageId: string; emoji: string; messageType: 'direct' | 'group' }) => {
-      return apiRequest("POST", `/api/messages/${messageId}/reactions`, { emoji, messageType });
+    mutationFn: async ({
+      messageId,
+      emoji,
+      messageType,
+    }: {
+      messageId: string;
+      emoji: string;
+      messageType: "direct" | "group";
+    }) => {
+      return apiRequest("POST", `/api/messages/${messageId}/reactions`, {
+        emoji,
+        messageType,
+      });
     },
     onSuccess: () => {
       refetchMessages();
@@ -843,7 +995,7 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
   return (
     <div className="h-[calc(100vh-10rem)] sm:h-[calc(100vh-12rem)]">
       {/* Header - hidden on mobile when chat is open */}
-      <div className={`mb-4 sm:mb-6 ${showChat ? 'hidden lg:block' : ''}`}>
+      <div className={`mb-4 sm:mb-6 ${showChat ? "hidden lg:block" : ""}`}>
         <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-1 sm:mb-2">
           {t("messages.title")}
         </h1>
@@ -854,12 +1006,16 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
 
       <div className="flex h-full gap-4">
         {/* Sidebar with Tabs */}
-        <Card className={`flex flex-col ${
-          showChat 
-            ? 'hidden lg:flex lg:w-80' 
-            : 'w-full lg:w-80'
-        }`}>
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "direct" | "groups")} className="flex flex-col h-full">
+        <Card
+          className={`flex flex-col ${
+            showChat ? "hidden lg:flex lg:w-80" : "w-full lg:w-80"
+          }`}
+        >
+          <Tabs
+            value={activeTab}
+            onValueChange={(v) => setActiveTab(v as "direct" | "groups")}
+            className="flex flex-col h-full"
+          >
             <TabsList className="grid w-full grid-cols-2  mb-0">
               <TabsTrigger value="direct" className="gap-2">
                 <MessageSquare className="w-4 h-4" />
@@ -877,7 +1033,10 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
             </TabsList>
 
             {/* Direct Messages Tab */}
-            <TabsContent value="direct" className="flex-1 flex flex-col m-0 mt-0">
+            <TabsContent
+              value="direct"
+              className="flex-1 flex flex-col m-0 mt-0"
+            >
               <CardHeader className="py-3 px-4 border-b">
                 <CardTitle className="text-base font-semibold">
                   {acceptedConnections.length} {t("dashboard.connections")}
@@ -900,7 +1059,9 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
                 ) : (
                   <div className="space-y-1 p-2">
                     {allContacts.map((contact) => {
-                      const conv = conversations.find(c => c.otherUser.id === contact.id);
+                      const conv = conversations.find(
+                        (c) => c.otherUser.id === contact.id
+                      );
                       return (
                         <button
                           key={contact.id}
@@ -918,7 +1079,9 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
                           <div className="flex items-center gap-3">
                             <div className="relative flex-shrink-0">
                               <Avatar className="h-10 w-10">
-                                <AvatarImage src={contact.avatarUrl || undefined} />
+                                <AvatarImage
+                                  src={contact.avatarUrl || undefined}
+                                />
                                 <AvatarFallback className="bg-primary/10 text-primary">
                                   {getInitials(contact.name || "")}
                                 </AvatarFallback>
@@ -936,30 +1099,38 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
                                   <span className="text-xs text-muted-foreground flex-shrink-0">
                                     {formatDate(conv.lastTimestamp)}
                                   </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground truncate">
+                                {conv?.lastMessage?.includes("[IMAGE]")
+                                  ? t("messages.imageSent")
+                                  : conv?.lastMessage ||
+                                    contact.jobPosition ||
+                                    t("messages.noMessages")}
+                              </p>
+                            </div>
+                            {conv && conv.unreadCount > 0 && (
+                              <Badge
+                                variant="default"
+                                className="h-5 min-w-5 flex items-center justify-center text-xs flex-shrink-0"
+                              >
+                                {conv.unreadCount}
+                              </Badge>
                             )}
                           </div>
-                          <p className="text-xs text-muted-foreground truncate">
-                            {conv?.lastMessage?.includes("[IMAGE]") 
-                              ? t("messages.imageSent")
-                              : (conv?.lastMessage || contact.jobPosition || t("messages.noMessages"))}
-                          </p>
-                        </div>
-                        {conv && conv.unreadCount > 0 && (
-                          <Badge variant="default" className="h-5 min-w-5 flex items-center justify-center text-xs flex-shrink-0">
-                            {conv.unreadCount}
-                          </Badge>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </ScrollArea>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </ScrollArea>
             </TabsContent>
 
             {/* Groups Tab */}
-            <TabsContent value="groups" className="flex-1 flex flex-col m-0 mt-0">
+            <TabsContent
+              value="groups"
+              className="flex-1 flex flex-col m-0 mt-0"
+            >
               <CardHeader className="py-3 px-4 border-b">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-base font-semibold">
@@ -1001,7 +1172,9 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
                               </p>
                               {invitation.invitedBy && (
                                 <p className="text-xs text-muted-foreground">
-                                  {invitation.invitedBy.fullName || invitation.invitedBy.name} {t("groups.groupInvitation")}
+                                  {invitation.invitedBy.fullName ||
+                                    invitation.invitedBy.name}{" "}
+                                  {t("groups.groupInvitation")}
                                 </p>
                               )}
                             </div>
@@ -1011,7 +1184,11 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
                               variant="default"
                               size="sm"
                               className="flex-1"
-                              onClick={() => acceptInvitationMutation.mutate(invitation.groupId)}
+                              onClick={() =>
+                                acceptInvitationMutation.mutate(
+                                  invitation.groupId
+                                )
+                              }
                               disabled={acceptInvitationMutation.isPending}
                             >
                               {t("groups.acceptInvitation")}
@@ -1020,7 +1197,11 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
                               variant="outline"
                               size="sm"
                               className="flex-1"
-                              onClick={() => declineInvitationMutation.mutate(invitation.groupId)}
+                              onClick={() =>
+                                declineInvitationMutation.mutate(
+                                  invitation.groupId
+                                )
+                              }
                               disabled={declineInvitationMutation.isPending}
                             >
                               {t("groups.declineInvitation")}
@@ -1084,7 +1265,9 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
                             <p className="text-xs text-muted-foreground">
                               {group.memberCount === 1
                                 ? t("groups.member")
-                                : t("groups.members", { count: group.memberCount })}
+                                : t("groups.members", {
+                                    count: group.memberCount,
+                                  })}
                             </p>
                           </div>
                         </div>
@@ -1110,7 +1293,7 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
                 >
                   <ArrowLeft className="w-5 h-5" />
                 </button>
-                
+
                 {/* Direct Message Header */}
                 {selectedUser && (
                   <>
@@ -1127,12 +1310,14 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
                         </h3>
                       </Link>
                       <p className="text-xs text-muted-foreground">
-                        {selectedUser.isOnline ? t("common.online") : t("common.offline")}
+                        {selectedUser.isOnline
+                          ? t("common.online")
+                          : t("common.offline")}
                       </p>
                     </div>
                   </>
                 )}
-                
+
                 {/* Group Chat Header */}
                 {selectedGroup && (
                   <>
@@ -1148,7 +1333,9 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
                       <p className="text-xs text-muted-foreground">
                         {selectedGroup.memberCount === 1
                           ? t("groups.member")
-                          : t("groups.members", { count: selectedGroup.memberCount })}
+                          : t("groups.members", {
+                              count: selectedGroup.memberCount,
+                            })}
                       </p>
                     </div>
                   </>
@@ -1185,7 +1372,7 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
                     </DropdownMenu>
                   </>
                 )}
-                
+
                 {/* Group chat actions */}
                 {selectedGroup && (
                   <>
@@ -1196,7 +1383,9 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
                       className="hidden sm:flex"
                     >
                       <UserPlus className="w-4 h-4 sm:mr-2" />
-                      <span className="hidden sm:inline">{t("groups.addMembers")}</span>
+                      <span className="hidden sm:inline">
+                        {t("groups.addMembers")}
+                      </span>
                     </Button>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -1234,7 +1423,12 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
                   {messagesLoading ? (
                     <div className="space-y-4">
                       {[1, 2, 3].map((i) => (
-                        <div key={i} className={`flex ${i % 2 === 0 ? "justify-end" : "justify-start"}`}>
+                        <div
+                          key={i}
+                          className={`flex ${
+                            i % 2 === 0 ? "justify-end" : "justify-start"
+                          }`}
+                        >
                           <Skeleton className="h-16 w-48 rounded-lg" />
                         </div>
                       ))}
@@ -1243,102 +1437,146 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
                     <div className="flex flex-col items-center justify-center h-full text-center px-4">
                       <MessageSquare className="w-10 h-10 sm:w-12 sm:h-12 text-muted-foreground/50 mb-3" />
                       <p className="text-sm sm:text-base text-muted-foreground">
-                        {t("messages.startConversation", { name: selectedUser.name || "" })}
+                        {t("messages.startConversation", {
+                          name: selectedUser.name || "",
+                        })}
                       </p>
                     </div>
                   ) : (
-                <div className="space-y-3 sm:space-y-4" data-testid="messages-list">
-                  {messages.map((msg) => (
                     <div
-                      key={msg.id}
-                      className={`flex ${
-                        msg.senderId === currentUser?.id ? "justify-end" : "justify-start"
-                      }`}
-                      data-testid={`msg-${msg.id}`}
+                      className="space-y-3 sm:space-y-4"
+                      data-testid="messages-list"
                     >
-                      <div className="flex flex-col">
+                      {messages.map((msg) => (
                         <div
-                          className={`group relative max-w-[80%] sm:max-w-xs px-3 sm:px-4 py-2 rounded-2xl ${
+                          key={msg.id}
+                          className={`flex ${
                             msg.senderId === currentUser?.id
-                              ? "bg-primary text-primary-foreground rounded-br-md"
-                              : "bg-muted rounded-bl-md"
+                              ? "justify-end"
+                              : "justify-start"
                           }`}
-                          onTouchStart={(e) => handleTouchStart(e, msg.id, msg.senderId)}
-                          onTouchEnd={handleTouchEnd}
-                          onTouchMove={handleTouchMove}
+                          data-testid={`msg-${msg.id}`}
                         >
-                          {renderMessageContent(msg.content)}
-                          <div className="flex items-center justify-between gap-2 mt-1">
-                            <p className="text-[10px] sm:text-xs opacity-70">
-                              {formatDate(msg.timestamp)}
-                            </p>
-                            {/* Read receipt indicator for own messages */}
-                            {msg.senderId === currentUser?.id && (
-                              <ReadReceiptIndicator
-                                isRead={msg.isRead || false}
-                                readReceipts={[]}
-                                isSender={true}
-                                t={t}
-                              />
+                          <div className="flex flex-col">
+                            <div
+                              className={`group relative max-w-[80%] sm:max-w-xs px-3 sm:px-4 py-2 rounded-2xl ${
+                                msg.senderId === currentUser?.id
+                                  ? "bg-primary text-primary-foreground rounded-br-md"
+                                  : "bg-muted rounded-bl-md"
+                              }`}
+                              onTouchStart={(e) =>
+                                handleTouchStart(e, msg.id, msg.senderId)
+                              }
+                              onTouchEnd={handleTouchEnd}
+                              onTouchMove={handleTouchMove}
+                            >
+                              {renderMessageContent(msg.content)}
+                              <div className="flex items-center justify-between gap-2 mt-1">
+                                <p className="text-[10px] sm:text-xs opacity-70">
+                                  {formatDate(msg.timestamp)}
+                                </p>
+                                {/* Read receipt indicator for own messages */}
+                                {msg.senderId === currentUser?.id && (
+                                  <ReadReceiptIndicator
+                                    isRead={msg.isRead || false}
+                                    readReceipts={[]}
+                                    isSender={true}
+                                    t={t}
+                                  />
+                                )}
+                              </div>
+
+                              {/* Action buttons (delete + reaction) - Hidden on mobile, shown via long press popup */}
+                              {!isMobile && (
+                                <div
+                                  className={`absolute ${
+                                    msg.senderId === currentUser?.id
+                                      ? "-left-16"
+                                      : "-right-16"
+                                  } top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity`}
+                                >
+                                  {msg.senderId === currentUser?.id && (
+                                    <button
+                                      onClick={() => {
+                                        setMessageToDelete(msg.id);
+                                        setDeleteDialogOpen(true);
+                                      }}
+                                      className="p-1 hover:bg-destructive/10 rounded"
+                                      title={t("common.delete")}
+                                    >
+                                      <Trash2 className="w-4 h-4 text-destructive" />
+                                    </button>
+                                  )}
+                                  <EmojiReactionPicker
+                                    messageId={msg.id}
+                                    messageType="direct"
+                                    onReact={(emoji) =>
+                                      reactToMessageMutation.mutate({
+                                        messageId: msg.id,
+                                        emoji,
+                                        messageType: "direct",
+                                      })
+                                    }
+                                  />
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Reactions display */}
+                            {(msg as any).reactions &&
+                              (msg as any).reactions.length > 0 && (
+                                <MessageReactionsDisplay
+                                  reactions={(msg as any).reactions}
+                                />
+                              )}
+                          </div>
+                        </div>
+                      ))}
+                      {/* Typing indicator */}
+                      {selectedUserId && typingUsers.has(selectedUserId) && (
+                        <div className="flex justify-start">
+                          <div className="bg-muted/60 px-4 py-2 rounded-2xl rounded-bl-md border border-muted-foreground/20">
+                            {typingPreviews[selectedUserId] ? (
+                              <p className="text-sm text-muted-foreground/70 italic">
+                                {typingPreviews[selectedUserId]}
+                              </p>
+                            ) : (
+                              <div className="flex gap-1 items-center">
+                                <span
+                                  className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce"
+                                  style={{ animationDelay: "0ms" }}
+                                />
+                                <span
+                                  className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce"
+                                  style={{ animationDelay: "150ms" }}
+                                />
+                                <span
+                                  className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce"
+                                  style={{ animationDelay: "300ms" }}
+                                />
+                              </div>
                             )}
                           </div>
-                          
-                          {/* Action buttons (delete + reaction) - Hidden on mobile, shown via long press popup */}
-                          {!isMobile && (
-                            <div className={`absolute ${msg.senderId === currentUser?.id ? '-left-16' : '-right-16'} top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity`}>
-                              {msg.senderId === currentUser?.id && (
-                                <button
-                                  onClick={() => {
-                                    setMessageToDelete(msg.id);
-                                    setDeleteDialogOpen(true);
-                                  }}
-                                  className="p-1 hover:bg-destructive/10 rounded"
-                                  title={t("common.delete")}
-                                >
-                                  <Trash2 className="w-4 h-4 text-destructive" />
-                                </button>
-                              )}
-                              <EmojiReactionPicker
-                                messageId={msg.id}
-                                messageType="direct"
-                                onReact={(emoji) => reactToMessageMutation.mutate({ messageId: msg.id, emoji, messageType: 'direct' })}
-                              />
-                            </div>
-                          )}
                         </div>
-                        
-                        {/* Reactions display */}
-                        {(msg as any).reactions && (msg as any).reactions.length > 0 && (
-                          <MessageReactionsDisplay reactions={(msg as any).reactions} />
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                  {/* Typing indicator */}
-                  {selectedUserId && typingUsers.has(selectedUserId) && (
-                    <div className="flex justify-start">
-                      <div className="bg-muted px-4 py-2 rounded-2xl rounded-bl-md">
-                        <div className="flex gap-1 items-center">
-                          <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                          <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                          <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-                        </div>
-                      </div>
+                      )}
+                      <div ref={messagesEndRef} />
                     </div>
                   )}
-                  <div ref={messagesEndRef} />
-                </div>
-              )}
                 </>
               )}
-              
+
               {/* Group Messages */}
               {selectedGroup && (
                 <>
                   {groupMessagesLoading ? (
                     <div className="space-y-4">
                       {[1, 2, 3].map((i) => (
-                        <div key={i} className={`flex ${i % 2 === 0 ? "justify-end" : "justify-start"}`}>
+                        <div
+                          key={i}
+                          className={`flex ${
+                            i % 2 === 0 ? "justify-end" : "justify-start"
+                          }`}
+                        >
                           <Skeleton className="h-16 w-48 rounded-lg" />
                         </div>
                       ))}
@@ -1347,25 +1585,38 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
                     <div className="flex flex-col items-center justify-center h-full text-center px-4">
                       <Users className="w-10 h-10 sm:w-12 sm:h-12 text-muted-foreground/50 mb-3" />
                       <p className="text-sm sm:text-base text-muted-foreground">
-                        {t("groups.startGroupMessage", { name: selectedGroup.name })}
+                        {t("groups.startGroupMessage", {
+                          name: selectedGroup.name,
+                        })}
                       </p>
                     </div>
                   ) : (
-                    <div className="space-y-3 sm:space-y-4" data-testid="group-messages-list">
+                    <div
+                      className="space-y-3 sm:space-y-4"
+                      data-testid="group-messages-list"
+                    >
                       {groupMessages.map((msg) => (
                         <div
                           key={msg.id}
                           className={`flex ${
-                            msg.senderId === currentUser?.id ? "justify-end" : "justify-start"
+                            msg.senderId === currentUser?.id
+                              ? "justify-end"
+                              : "justify-start"
                           }`}
                         >
                           <div className="flex gap-2 max-w-[80%] sm:max-w-xs">
                             {msg.senderId !== currentUser?.id && (
                               <Link href={`/profile/${msg.sender.id}`}>
                                 <Avatar className="w-8 h-8 flex-shrink-0">
-                                  <AvatarImage src={msg.sender.avatarUrl || undefined} />
+                                  <AvatarImage
+                                    src={msg.sender.avatarUrl || undefined}
+                                  />
                                   <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                                    {getInitials(msg.sender.fullName || msg.sender.name || "")}
+                                    {getInitials(
+                                      msg.sender.fullName ||
+                                        msg.sender.name ||
+                                        ""
+                                    )}
                                   </AvatarFallback>
                                 </Avatar>
                               </Link>
@@ -1387,21 +1638,36 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
                                 <p className="text-[10px] sm:text-xs opacity-70 mt-1">
                                   {formatDate(msg.timestamp)}
                                 </p>
-                                
+
                                 {/* Reaction picker for group messages */}
-                                <div className={`absolute ${msg.senderId === currentUser?.id ? '-left-10' : '-right-10'} top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity`}>
+                                <div
+                                  className={`absolute ${
+                                    msg.senderId === currentUser?.id
+                                      ? "-left-10"
+                                      : "-right-10"
+                                  } top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity`}
+                                >
                                   <EmojiReactionPicker
                                     messageId={msg.id}
                                     messageType="group"
-                                    onReact={(emoji) => reactToMessageMutation.mutate({ messageId: msg.id, emoji, messageType: 'group' })}
+                                    onReact={(emoji) =>
+                                      reactToMessageMutation.mutate({
+                                        messageId: msg.id,
+                                        emoji,
+                                        messageType: "group",
+                                      })
+                                    }
                                   />
                                 </div>
                               </div>
-                              
+
                               {/* Reactions display */}
-                              {(msg as any).reactions && (msg as any).reactions.length > 0 && (
-                                <MessageReactionsDisplay reactions={(msg as any).reactions} />
-                              )}
+                              {(msg as any).reactions &&
+                                (msg as any).reactions.length > 0 && (
+                                  <MessageReactionsDisplay
+                                    reactions={(msg as any).reactions}
+                                  />
+                                )}
                             </div>
                           </div>
                         </div>
@@ -1417,9 +1683,9 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
             {selectedUser && selectedImage && (
               <div className="px-3 sm:px-4 pt-2">
                 <div className="relative inline-block">
-                  <img 
-                    src={selectedImage} 
-                    alt="Preview" 
+                  <img
+                    src={selectedImage}
+                    alt="Preview"
                     className="w-20 h-20 object-cover rounded-lg border"
                   />
                   <Button
@@ -1448,18 +1714,24 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
                 variant="outline"
                 size="icon"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={sendMutation.isPending || sendGroupMessageMutation.isPending}
+                disabled={
+                  sendMutation.isPending || sendGroupMessageMutation.isPending
+                }
                 title={t("messages.attachImage")}
               >
                 <ImagePlus className="w-4 h-4" />
               </Button>
-              
+
               {/* GIF button */}
               <GifPicker onSelect={handleSendGif} t={t} />
-              
+
               <Input
                 ref={messageInputRef}
-                placeholder={selectedGroup ? t("groups.typeGroupMessage") : t("messages.typeMessage")}
+                placeholder={
+                  selectedGroup
+                    ? t("groups.typeGroupMessage")
+                    : t("messages.typeMessage")
+                }
                 value={messageInput}
                 onChange={handleInputChange}
                 onKeyDown={(e) => {
@@ -1470,15 +1742,17 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
                   }
                 }}
                 onBlur={() => !selectedGroupId && handleTyping(false)}
-                disabled={sendMutation.isPending || sendGroupMessageMutation.isPending}
+                disabled={
+                  sendMutation.isPending || sendGroupMessageMutation.isPending
+                }
                 className="flex-1 text-base"
                 data-testid="input-message"
               />
               <Button
                 onClick={handleSendMessage}
                 disabled={
-                  (!messageInput.trim() && !selectedImage) || 
-                  sendMutation.isPending || 
+                  (!messageInput.trim() && !selectedImage) ||
+                  sendMutation.isPending ||
                   sendGroupMessageMutation.isPending
                 }
                 size="icon"
@@ -1511,7 +1785,10 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRemoveDialogOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setRemoveDialogOpen(false)}
+            >
               {t("common.cancel")}
             </Button>
             <Button
@@ -1526,10 +1803,13 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
       </Dialog>
 
       {/* Delete Message Confirmation Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={(open) => {
-        setDeleteDialogOpen(open);
-        if (!open) setMessageToDelete(null);
-      }}>
+      <Dialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open);
+          if (!open) setMessageToDelete(null);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t("messages.deleteMessage")}</DialogTitle>
@@ -1538,12 +1818,17 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+            >
               {t("common.cancel")}
             </Button>
             <Button
               variant="destructive"
-              onClick={() => messageToDelete && deleteMessageMutation.mutate(messageToDelete)}
+              onClick={() =>
+                messageToDelete && deleteMessageMutation.mutate(messageToDelete)
+              }
               disabled={deleteMessageMutation.isPending}
             >
               {t("common.delete")}
@@ -1553,7 +1838,10 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
       </Dialog>
 
       {/* Leave Group Confirmation Dialog */}
-      <Dialog open={leaveGroupDialogOpen} onOpenChange={setLeaveGroupDialogOpen}>
+      <Dialog
+        open={leaveGroupDialogOpen}
+        onOpenChange={setLeaveGroupDialogOpen}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t("groups.leaveGroup")}</DialogTitle>
@@ -1562,7 +1850,10 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setLeaveGroupDialogOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setLeaveGroupDialogOpen(false)}
+            >
               {t("common.cancel")}
             </Button>
             <Button
@@ -1610,16 +1901,19 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
       {isMobile && longPressMessageId && longPressPosition && (
         <>
           {/* Backdrop */}
-          <div 
-            className="fixed inset-0 z-[60]" 
-            onClick={closeLongPressMenu}
-          />
+          <div className="fixed inset-0 z-[60]" onClick={closeLongPressMenu} />
           {/* Popup */}
           <div
             className="fixed z-[70] bg-background border rounded-xl shadow-lg p-2 w-auto max-w-[90vw]"
             style={{
-              left: Math.max(10, Math.min(longPressPosition.x - 140, window.innerWidth - 200)),
-              top: Math.max(10, Math.min(longPressPosition.y - 80, window.innerHeight - 200)),
+              left: Math.max(
+                10,
+                Math.min(longPressPosition.x - 140, window.innerWidth - 200)
+              ),
+              top: Math.max(
+                10,
+                Math.min(longPressPosition.y - 80, window.innerHeight - 200)
+              ),
             }}
           >
             {/* Emoji reactions */}
@@ -1628,10 +1922,10 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
                 <button
                   key={emoji}
                   onClick={() => {
-                    reactToMessageMutation.mutate({ 
-                      messageId: longPressMessageId, 
-                      emoji, 
-                      messageType: selectedGroupId ? 'group' : 'direct' 
+                    reactToMessageMutation.mutate({
+                      messageId: longPressMessageId,
+                      emoji,
+                      messageType: selectedGroupId ? "group" : "direct",
                     });
                     closeLongPressMenu();
                   }}
@@ -1641,9 +1935,10 @@ export default function MessagesPage({ wsRef }: MessagesPageProps) {
                 </button>
               ))}
             </div>
-            
+
             {/* Delete option - only for own messages */}
-            {messages.find(m => m.id === longPressMessageId)?.senderId === currentUser?.id && (
+            {messages.find((m) => m.id === longPressMessageId)?.senderId ===
+              currentUser?.id && (
               <button
                 onClick={() => {
                   setMessageToDelete(longPressMessageId);

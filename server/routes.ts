@@ -15,26 +15,30 @@ export async function registerRoutes(
 ): Promise<Server> {
   // Middleware
   app.use(cookieParser());
-  
+
   // Serve profile pictures statically
-  app.use("/profile_pictures", express.static(path.join(process.cwd(), "profile_pictures")));
-  
+  app.use(
+    "/profile_pictures",
+    express.static(path.join(process.cwd(), "profile_pictures"))
+  );
+
   // Auth routes
   app.use("/api/auth", authRouter);
 
   // Public config endpoint (for runtime environment variables)
   app.get("/api/config", (_req: Request, res: Response) => {
     res.json({
-      googleClientId: process.env.VITE_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || "",
+      googleClientId:
+        process.env.VITE_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || "",
     });
   });
-  
+
   // Upload routes
   app.use("/api/upload", uploadRouter);
 
   // WebSocket server for live chat and direct messages
   const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
-  
+
   const clients = new Set<WebSocket>();
   const userConnections = new Map<string, WebSocket>();
 
@@ -45,13 +49,13 @@ export async function registerRoutes(
     ws.on("message", async (message) => {
       try {
         const data = JSON.parse(message.toString());
-        
+
         if (data.type === "connect") {
           userId = data.userId;
           if (userId) {
             userConnections.set(userId, ws);
             await storage.setUserOnline(userId, true);
-            
+
             // Broadcast online status
             broadcastToAll({
               type: "user_online",
@@ -60,20 +64,25 @@ export async function registerRoutes(
           }
           return;
         }
-        
+
         if (data.type === "direct_message" && userId) {
           const { receiverId, content } = data;
-          
+
           // Check if users are connected
-          const connection = await storage.getConnectionBetweenUsers(userId, receiverId);
+          const connection = await storage.getConnectionBetweenUsers(
+            userId,
+            receiverId
+          );
           if (!connection || connection.status !== "accepted") {
-            ws.send(JSON.stringify({
-              type: "error",
-              message: "You can only message users you are connected with",
-            }));
+            ws.send(
+              JSON.stringify({
+                type: "error",
+                message: "You can only message users you are connected with",
+              })
+            );
             return;
           }
-          
+
           const sender = await storage.getUser(userId);
           const dmMessage = await storage.createDirectMessage({
             senderId: userId,
@@ -82,31 +91,35 @@ export async function registerRoutes(
             timestamp: new Date().toISOString(),
             isRead: false,
           });
-          
+
           // Send to receiver if online
           const recipientWs = userConnections.get(receiverId);
           if (recipientWs && recipientWs.readyState === WebSocket.OPEN) {
-            recipientWs.send(JSON.stringify({
-              type: "direct_message",
-              data: {
-                ...dmMessage,
-                sender,
-              },
-            }));
+            recipientWs.send(
+              JSON.stringify({
+                type: "direct_message",
+                data: {
+                  ...dmMessage,
+                  sender,
+                },
+              })
+            );
           }
-          
+
           // Send confirmation to sender
-          ws.send(JSON.stringify({
-            type: "direct_message_sent",
-            data: dmMessage,
-          }));
+          ws.send(
+            JSON.stringify({
+              type: "direct_message_sent",
+              data: dmMessage,
+            })
+          );
           return;
         }
-        
+
         if (data.type === "chat" && userId) {
           const sender = await storage.getUser(userId);
           if (!sender) return;
-          
+
           const chatMessage = {
             id: randomUUID(),
             senderId: userId,
@@ -133,7 +146,7 @@ export async function registerRoutes(
               "That's a common question! You can update your interests in your profile settings.",
               "Absolutely! We encourage connecting with professionals who share your interests.",
             ];
-            
+
             const supportResponse = {
               id: randomUUID(),
               senderId: "support",
@@ -150,16 +163,19 @@ export async function registerRoutes(
             }
           }, 1500);
         }
-        
+
         if (data.type === "typing" && userId) {
-          const { receiverId, isTyping } = data;
+          const { receiverId, isTyping, content } = data;
           const recipientWs = userConnections.get(receiverId);
           if (recipientWs && recipientWs.readyState === WebSocket.OPEN) {
-            recipientWs.send(JSON.stringify({
-              type: "typing",
-              userId,
-              isTyping,
-            }));
+            recipientWs.send(
+              JSON.stringify({
+                type: "typing",
+                userId,
+                isTyping,
+                content: content || "", // Forward the typing content
+              })
+            );
           }
         }
       } catch (error) {
@@ -172,7 +188,7 @@ export async function registerRoutes(
       if (userId) {
         userConnections.delete(userId);
         await storage.setUserOnline(userId, false);
-        
+
         // Broadcast offline status
         broadcastToAll({
           type: "user_offline",
@@ -227,8 +243,8 @@ export async function registerRoutes(
     try {
       const interests = req.query.interests as string | undefined;
       const search = req.query.search as string | undefined;
-      
-      let users = interests 
+
+      let users = interests
         ? await storage.getUsersByInterests(interests.split(","))
         : await storage.getAllUsers();
 
@@ -277,16 +293,16 @@ export async function registerRoutes(
       }
 
       let users = await storage.getAllUsers();
-      
+
       // Filter out current user
       users = users.filter((u) => u.id !== currentUser.id);
 
       // Sort by number of shared interests
       users.sort((a, b) => {
-        const aMatches = (a.interests || []).filter((i) => 
+        const aMatches = (a.interests || []).filter((i) =>
           (currentUser.interests || []).includes(i)
         ).length;
-        const bMatches = (b.interests || []).filter((i) => 
+        const bMatches = (b.interests || []).filter((i) =>
           (currentUser.interests || []).includes(i)
         ).length;
         return bMatches - aMatches;
@@ -318,21 +334,23 @@ export async function registerRoutes(
       if (!currentUser) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const connections = await storage.getConnectionsByUser(currentUser.id);
-      const acceptedConnections = connections.filter(c => c.status === "accepted").length;
+      const acceptedConnections = connections.filter(
+        (c) => c.status === "accepted"
+      ).length;
       const pendingRequests = connections.filter(
-        c => c.status === "pending" && c.receiverId === currentUser.id
+        (c) => c.status === "pending" && c.receiverId === currentUser.id
       ).length;
 
       // Calculate messages count as engagement metric
       const messages = await storage.getDirectMessageCount(currentUser.id);
-      
+
       res.json({
         totalConnections: acceptedConnections,
         pendingRequests,
         messagesSent: messages,
-        matchScore: (currentUser.interests || []).length 
+        matchScore: (currentUser.interests || []).length
           ? Math.min(100, (currentUser.interests || []).length * 15)
           : 0,
       });
@@ -362,13 +380,18 @@ export async function registerRoutes(
       if (!currentUser) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const connections = await storage.getConnectionsByUser(currentUser.id);
-      const acceptedConnections = connections.filter(c => c.status === "accepted");
-      
+      const acceptedConnections = connections.filter(
+        (c) => c.status === "accepted"
+      );
+
       const connectionsWithUsers = await Promise.all(
         acceptedConnections.map(async (conn) => {
-          const otherUserId = conn.requesterId === currentUser.id ? conn.receiverId : conn.requesterId;
+          const otherUserId =
+            conn.requesterId === currentUser.id
+              ? conn.receiverId
+              : conn.requesterId;
           const otherUser = await storage.getUser(otherUserId);
           return {
             ...conn,
@@ -376,7 +399,7 @@ export async function registerRoutes(
           };
         })
       );
-      
+
       res.json(connectionsWithUsers);
     } catch (error) {
       res.status(500).json({ error: "Failed to get connections" });
@@ -390,7 +413,7 @@ export async function registerRoutes(
       if (!currentUser) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const { receiverId } = req.body;
 
       if (!receiverId) {
@@ -398,7 +421,10 @@ export async function registerRoutes(
       }
 
       // Check if connection already exists
-      const existing = await storage.getConnectionBetweenUsers(currentUser.id, receiverId);
+      const existing = await storage.getConnectionBetweenUsers(
+        currentUser.id,
+        receiverId
+      );
       if (existing) {
         return res.status(400).json({ error: "Connection already exists" });
       }
@@ -416,7 +442,9 @@ export async function registerRoutes(
         type: "connection_request",
         fromUserId: currentUser.id,
         connectionId: connection.id,
-        message: `${currentUser.name || currentUser.fullName} wants to connect with you`,
+        message: `${
+          currentUser.name || currentUser.fullName
+        } wants to connect with you`,
         read: false,
         createdAt: new Date().toISOString(),
       });
@@ -424,14 +452,16 @@ export async function registerRoutes(
       // Notify via WebSocket if user is online
       const receiverWs = userConnections.get(receiverId);
       if (receiverWs && receiverWs.readyState === WebSocket.OPEN) {
-        receiverWs.send(JSON.stringify({
-          type: "notification",
-          data: {
-            type: "connection_request",
-            fromUser: currentUser,
-            connectionId: connection.id,
-          },
-        }));
+        receiverWs.send(
+          JSON.stringify({
+            type: "notification",
+            data: {
+              type: "connection_request",
+              fromUser: currentUser,
+              connectionId: connection.id,
+            },
+          })
+        );
       }
 
       res.json(connection);
@@ -447,9 +477,9 @@ export async function registerRoutes(
       if (!currentUser) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const { status } = req.body;
-      
+
       if (!["accepted", "declined"].includes(status)) {
         return res.status(400).json({ error: "Invalid status" });
       }
@@ -464,7 +494,10 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Not authorized" });
       }
 
-      const updatedConnection = await storage.updateConnectionStatus(req.params.id, status);
+      const updatedConnection = await storage.updateConnectionStatus(
+        req.params.id,
+        status
+      );
 
       // Delete the original connection_request notification sent to the receiver (current user)
       await storage.deleteNotificationByConnectionId(req.params.id);
@@ -476,7 +509,9 @@ export async function registerRoutes(
           type: "connection_accepted",
           fromUserId: currentUser.id,
           connectionId: connection.id,
-          message: `${currentUser.name || currentUser.fullName} accepted your connection request`,
+          message: `${
+            currentUser.name || currentUser.fullName
+          } accepted your connection request`,
           read: false,
           createdAt: new Date().toISOString(),
         });
@@ -499,14 +534,16 @@ export async function registerRoutes(
         // Notify via WebSocket
         const requesterWs = userConnections.get(connection.requesterId);
         if (requesterWs && requesterWs.readyState === WebSocket.OPEN) {
-          requesterWs.send(JSON.stringify({
-            type: "notification",
-            data: {
-              type: "connection_accepted",
-              fromUser: currentUser,
-              connectionId: connection.id,
-            },
-          }));
+          requesterWs.send(
+            JSON.stringify({
+              type: "notification",
+              data: {
+                type: "connection_accepted",
+                fromUser: currentUser,
+                connectionId: connection.id,
+              },
+            })
+          );
         }
       }
 
@@ -530,7 +567,10 @@ export async function registerRoutes(
       }
 
       // Only participants can delete the connection
-      if (connection.requesterId !== currentUser.id && connection.receiverId !== currentUser.id) {
+      if (
+        connection.requesterId !== currentUser.id &&
+        connection.receiverId !== currentUser.id
+      ) {
         return res.status(403).json({ error: "Not authorized" });
       }
 
@@ -548,29 +588,31 @@ export async function registerRoutes(
       if (!currentUser) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const notifications = await storage.getNotifications(currentUser.id);
-      
+
       // Populate with user data
       const notificationsWithUsers = await Promise.all(
         notifications.map(async (notification) => {
           if (notification.fromUserId) {
             const fromUser = await storage.getUser(notification.fromUserId);
-            const connectionsCount = fromUser 
+            const connectionsCount = fromUser
               ? await storage.getAcceptedConnectionsCount(fromUser.id)
               : 0;
             return {
               ...notification,
-              fromUser: fromUser ? {
-                ...fromUser,
-                connectionsCount,
-              } : null,
+              fromUser: fromUser
+                ? {
+                    ...fromUser,
+                    connectionsCount,
+                  }
+                : null,
             };
           }
           return notification;
         })
       );
-      
+
       res.json(notificationsWithUsers);
     } catch (error) {
       res.status(500).json({ error: "Failed to get notifications" });
@@ -578,42 +620,51 @@ export async function registerRoutes(
   });
 
   // Mark notification as read
-  app.patch("/api/notifications/:id/read", async (req: Request, res: Response) => {
-    try {
-      await storage.markNotificationRead(req.params.id);
-      res.json({ success: true });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to mark notification as read" });
+  app.patch(
+    "/api/notifications/:id/read",
+    async (req: Request, res: Response) => {
+      try {
+        await storage.markNotificationRead(req.params.id);
+        res.json({ success: true });
+      } catch (error) {
+        res.status(500).json({ error: "Failed to mark notification as read" });
+      }
     }
-  });
+  );
 
   // Mark all notifications as read
-  app.post("/api/notifications/read-all", async (req: Request, res: Response) => {
-    try {
-      const currentUser = await getCurrentUser(req);
-      if (!currentUser) {
-        return res.status(401).json({ error: "Not authenticated" });
+  app.post(
+    "/api/notifications/read-all",
+    async (req: Request, res: Response) => {
+      try {
+        const currentUser = await getCurrentUser(req);
+        if (!currentUser) {
+          return res.status(401).json({ error: "Not authenticated" });
+        }
+        await storage.markAllNotificationsRead(currentUser.id);
+        res.json({ success: true });
+      } catch (error) {
+        res.status(500).json({ error: "Failed to mark notifications as read" });
       }
-      await storage.markAllNotificationsRead(currentUser.id);
-      res.json({ success: true });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to mark notifications as read" });
     }
-  });
+  );
 
   // Get unread notifications count
-  app.get("/api/notifications/unread-count", async (req: Request, res: Response) => {
-    try {
-      const currentUser = await getCurrentUser(req);
-      if (!currentUser) {
-        return res.status(401).json({ error: "Not authenticated" });
+  app.get(
+    "/api/notifications/unread-count",
+    async (req: Request, res: Response) => {
+      try {
+        const currentUser = await getCurrentUser(req);
+        if (!currentUser) {
+          return res.status(401).json({ error: "Not authenticated" });
+        }
+        const count = await storage.getUnreadNotificationsCount(currentUser.id);
+        res.json({ count });
+      } catch (error) {
+        res.status(500).json({ error: "Failed to get unread count" });
       }
-      const count = await storage.getUnreadNotificationsCount(currentUser.id);
-      res.json({ count });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to get unread count" });
     }
-  });
+  );
 
   // Get activities
   app.get("/api/activities", async (req: Request, res: Response) => {
@@ -626,18 +677,23 @@ export async function registerRoutes(
   });
 
   // Get conversations for current user
-  app.get("/api/messages/conversations", async (req: Request, res: Response) => {
-    try {
-      const currentUser = await getCurrentUser(req);
-      if (!currentUser) {
-        return res.status(401).json({ error: "Not authenticated" });
+  app.get(
+    "/api/messages/conversations",
+    async (req: Request, res: Response) => {
+      try {
+        const currentUser = await getCurrentUser(req);
+        if (!currentUser) {
+          return res.status(401).json({ error: "Not authenticated" });
+        }
+        const conversations = await storage.getDirectMessageConversations(
+          currentUser.id
+        );
+        res.json(conversations);
+      } catch (error) {
+        res.status(500).json({ error: "Failed to get conversations" });
       }
-      const conversations = await storage.getDirectMessageConversations(currentUser.id);
-      res.json(conversations);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to get conversations" });
     }
-  });
+  );
 
   // Get unread messages count - MUST be before :userId route
   app.get("/api/messages/unread-count", async (req: Request, res: Response) => {
@@ -660,30 +716,40 @@ export async function registerRoutes(
       if (!currentUser) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const otherUserId = req.params.userId;
-      
+
       // Check if users are connected
-      const connection = await storage.getConnectionBetweenUsers(currentUser.id, otherUserId);
+      const connection = await storage.getConnectionBetweenUsers(
+        currentUser.id,
+        otherUserId
+      );
       if (!connection || connection.status !== "accepted") {
-        return res.status(403).json({ error: "You can only view messages with connected users" });
+        return res
+          .status(403)
+          .json({ error: "You can only view messages with connected users" });
       }
-      
-      const messages = await storage.getDirectMessages(currentUser.id, otherUserId);
-      
+
+      const messages = await storage.getDirectMessages(
+        currentUser.id,
+        otherUserId
+      );
+
       // Mark messages as read
       for (const msg of messages) {
         if (msg.receiverId === currentUser.id && !msg.isRead) {
           await storage.markDirectMessageAsRead(msg.id);
         }
       }
-      
+
       // Fetch reactions for each message
-      const messagesWithReactions = await Promise.all(messages.map(async (msg) => {
-        const reactions = await storage.getMessageReactions(msg.id, 'direct');
-        return { ...msg, reactions };
-      }));
-      
+      const messagesWithReactions = await Promise.all(
+        messages.map(async (msg) => {
+          const reactions = await storage.getMessageReactions(msg.id, "direct");
+          return { ...msg, reactions };
+        })
+      );
+
       res.json(messagesWithReactions);
     } catch (error) {
       res.status(500).json({ error: "Failed to get messages" });
@@ -691,90 +757,129 @@ export async function registerRoutes(
   });
 
   // Mark messages from a user as read
-  app.post("/api/messages/:userId/mark-read", async (req: Request, res: Response) => {
-    try {
-      const currentUser = await getCurrentUser(req);
-      if (!currentUser) {
-        return res.status(401).json({ error: "Not authenticated" });
+  app.post(
+    "/api/messages/:userId/mark-read",
+    async (req: Request, res: Response) => {
+      try {
+        const currentUser = await getCurrentUser(req);
+        if (!currentUser) {
+          return res.status(401).json({ error: "Not authenticated" });
+        }
+
+        const otherUserId = req.params.userId;
+        await storage.markMessagesFromUserAsRead(currentUser.id, otherUserId);
+        res.json({ success: true });
+      } catch (error) {
+        res.status(500).json({ error: "Failed to mark messages as read" });
       }
-      
-      const otherUserId = req.params.userId;
-      await storage.markMessagesFromUserAsRead(currentUser.id, otherUserId);
-      res.json({ success: true });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to mark messages as read" });
     }
-  });
+  );
 
   // Delete direct message (only own messages)
-  app.delete("/api/messages/:messageId", async (req: Request, res: Response) => {
-    try {
-      const currentUser = await getCurrentUser(req);
-      if (!currentUser) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
+  app.delete(
+    "/api/messages/:messageId",
+    async (req: Request, res: Response) => {
+      try {
+        const currentUser = await getCurrentUser(req);
+        if (!currentUser) {
+          return res.status(401).json({ error: "Not authenticated" });
+        }
 
-      const messageId = req.params.messageId;
-      const message = await storage.getDirectMessage(messageId);
-      
-      if (!message) {
-        return res.status(404).json({ error: "Message not found" });
-      }
+        const messageId = req.params.messageId;
+        const message = await storage.getDirectMessage(messageId);
 
-      // Only the sender can delete their own message
-      if (message.senderId !== currentUser.id) {
-        return res.status(403).json({ error: "You can only delete your own messages" });
-      }
+        if (!message) {
+          return res.status(404).json({ error: "Message not found" });
+        }
 
-      await storage.deleteDirectMessage(messageId);
-      res.json({ success: true });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to delete message" });
+        // Only the sender can delete their own message
+        if (message.senderId !== currentUser.id) {
+          return res
+            .status(403)
+            .json({ error: "You can only delete your own messages" });
+        }
+
+        await storage.deleteDirectMessage(messageId);
+        res.json({ success: true });
+      } catch (error) {
+        res.status(500).json({ error: "Failed to delete message" });
+      }
     }
-  });
+  );
 
   // ==================== MESSAGE REACTIONS API ====================
 
   // Get reactions for a message
-  app.get("/api/messages/:messageId/reactions", async (req: Request, res: Response) => {
-    try {
-      const { messageId } = req.params;
-      const messageType = (req.query.type as string) || 'direct';
-      
-      const reactions = await storage.getMessageReactions(messageId, messageType as 'direct' | 'group');
-      res.json(reactions);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to get reactions" });
+  app.get(
+    "/api/messages/:messageId/reactions",
+    async (req: Request, res: Response) => {
+      try {
+        const { messageId } = req.params;
+        const messageType = (req.query.type as string) || "direct";
+
+        const reactions = await storage.getMessageReactions(
+          messageId,
+          messageType as "direct" | "group"
+        );
+        res.json(reactions);
+      } catch (error) {
+        res.status(500).json({ error: "Failed to get reactions" });
+      }
     }
-  });
+  );
 
   // Add or update reaction to a message
-  app.post("/api/messages/:messageId/reactions", async (req: Request, res: Response) => {
-    try {
-      const currentUser = await getCurrentUser(req);
-      if (!currentUser) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
+  app.post(
+    "/api/messages/:messageId/reactions",
+    async (req: Request, res: Response) => {
+      try {
+        const currentUser = await getCurrentUser(req);
+        if (!currentUser) {
+          return res.status(401).json({ error: "Not authenticated" });
+        }
 
-      const { messageId } = req.params;
-      const { emoji, messageType = 'direct' } = req.body;
+        const { messageId } = req.params;
+        const { emoji, messageType = "direct" } = req.body;
 
-      const supportedEmojis = ["😂", "❤", "👍", "😒", "😠"];
-      if (!supportedEmojis.includes(emoji)) {
-        return res.status(400).json({ error: "Invalid emoji" });
-      }
+        const supportedEmojis = ["😂", "❤", "👍", "😒", "😠"];
+        if (!supportedEmojis.includes(emoji)) {
+          return res.status(400).json({ error: "Invalid emoji" });
+        }
 
-      // Check if user already has a reaction
-      const existingReaction = await storage.getMessageReaction(messageId, messageType, currentUser.id);
-      
-      if (existingReaction) {
-        if (existingReaction.emoji === emoji) {
-          // Remove reaction if same emoji clicked
-          await storage.deleteMessageReaction(messageId, messageType, currentUser.id);
-          res.json({ removed: true });
+        // Check if user already has a reaction
+        const existingReaction = await storage.getMessageReaction(
+          messageId,
+          messageType,
+          currentUser.id
+        );
+
+        if (existingReaction) {
+          if (existingReaction.emoji === emoji) {
+            // Remove reaction if same emoji clicked
+            await storage.deleteMessageReaction(
+              messageId,
+              messageType,
+              currentUser.id
+            );
+            res.json({ removed: true });
+          } else {
+            // Update to new emoji
+            await storage.deleteMessageReaction(
+              messageId,
+              messageType,
+              currentUser.id
+            );
+            const reaction = await storage.createMessageReaction({
+              messageId,
+              messageType,
+              userId: currentUser.id,
+              emoji,
+              createdAt: new Date().toISOString(),
+            });
+            res.json({ ...reaction, user: currentUser });
+          }
         } else {
-          // Update to new emoji
-          await storage.deleteMessageReaction(messageId, messageType, currentUser.id);
+          // Create new reaction
           const reaction = await storage.createMessageReaction({
             messageId,
             messageType,
@@ -784,55 +889,58 @@ export async function registerRoutes(
           });
           res.json({ ...reaction, user: currentUser });
         }
-      } else {
-        // Create new reaction
-        const reaction = await storage.createMessageReaction({
-          messageId,
-          messageType,
-          userId: currentUser.id,
-          emoji,
-          createdAt: new Date().toISOString(),
-        });
-        res.json({ ...reaction, user: currentUser });
+      } catch (error) {
+        console.error("Error adding reaction:", error);
+        res.status(500).json({ error: "Failed to add reaction" });
       }
-    } catch (error) {
-      console.error("Error adding reaction:", error);
-      res.status(500).json({ error: "Failed to add reaction" });
     }
-  });
+  );
 
   // Remove reaction from a message
-  app.delete("/api/messages/:messageId/reactions", async (req: Request, res: Response) => {
-    try {
-      const currentUser = await getCurrentUser(req);
-      if (!currentUser) {
-        return res.status(401).json({ error: "Not authenticated" });
+  app.delete(
+    "/api/messages/:messageId/reactions",
+    async (req: Request, res: Response) => {
+      try {
+        const currentUser = await getCurrentUser(req);
+        if (!currentUser) {
+          return res.status(401).json({ error: "Not authenticated" });
+        }
+
+        const { messageId } = req.params;
+        const messageType = (req.query.type as string) || "direct";
+
+        await storage.deleteMessageReaction(
+          messageId,
+          messageType as "direct" | "group",
+          currentUser.id
+        );
+        res.json({ success: true });
+      } catch (error) {
+        res.status(500).json({ error: "Failed to remove reaction" });
       }
-
-      const { messageId } = req.params;
-      const messageType = (req.query.type as string) || 'direct';
-
-      await storage.deleteMessageReaction(messageId, messageType as 'direct' | 'group', currentUser.id);
-      res.json({ success: true });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to remove reaction" });
     }
-  });
+  );
 
   // ==================== MESSAGE READ RECEIPTS API ====================
 
   // Get read receipts for a message
-  app.get("/api/messages/:messageId/read-receipts", async (req: Request, res: Response) => {
-    try {
-      const { messageId } = req.params;
-      const messageType = (req.query.type as string) || 'direct';
-      
-      const receipts = await storage.getMessageReadReceipts(messageId, messageType as 'direct' | 'group');
-      res.json(receipts);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to get read receipts" });
+  app.get(
+    "/api/messages/:messageId/read-receipts",
+    async (req: Request, res: Response) => {
+      try {
+        const { messageId } = req.params;
+        const messageType = (req.query.type as string) || "direct";
+
+        const receipts = await storage.getMessageReadReceipts(
+          messageId,
+          messageType as "direct" | "group"
+        );
+        res.json(receipts);
+      } catch (error) {
+        res.status(500).json({ error: "Failed to get read receipts" });
+      }
     }
-  });
+  );
 
   // Mark messages as read
   app.post("/api/messages/mark-read", async (req: Request, res: Response) => {
@@ -842,13 +950,17 @@ export async function registerRoutes(
         return res.status(401).json({ error: "Not authenticated" });
       }
 
-      const { messageIds, messageType = 'direct' } = req.body;
+      const { messageIds, messageType = "direct" } = req.body;
 
       if (!messageIds || !Array.isArray(messageIds)) {
         return res.status(400).json({ error: "Message IDs required" });
       }
 
-      await storage.markMessagesAsReadByUser(currentUser.id, messageIds, messageType);
+      await storage.markMessagesAsReadByUser(
+        currentUser.id,
+        messageIds,
+        messageType
+      );
       res.json({ success: true });
     } catch (error) {
       console.error("Error marking messages as read:", error);
@@ -863,17 +975,24 @@ export async function registerRoutes(
       if (!currentUser) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const { receiverId, content } = req.body;
 
       if (!receiverId || !content) {
-        return res.status(400).json({ error: "Receiver ID and content required" });
+        return res
+          .status(400)
+          .json({ error: "Receiver ID and content required" });
       }
 
       // Check if users are connected
-      const connection = await storage.getConnectionBetweenUsers(currentUser.id, receiverId);
+      const connection = await storage.getConnectionBetweenUsers(
+        currentUser.id,
+        receiverId
+      );
       if (!connection || connection.status !== "accepted") {
-        return res.status(403).json({ error: "You can only message users you are connected with" });
+        return res
+          .status(403)
+          .json({ error: "You can only message users you are connected with" });
       }
 
       const message = await storage.createDirectMessage({
@@ -887,13 +1006,15 @@ export async function registerRoutes(
       // Notify via WebSocket if recipient is online
       const recipientWs = userConnections.get(receiverId);
       if (recipientWs && recipientWs.readyState === WebSocket.OPEN) {
-        recipientWs.send(JSON.stringify({
-          type: "direct_message",
-          data: {
-            ...message,
-            sender: currentUser,
-          },
-        }));
+        recipientWs.send(
+          JSON.stringify({
+            type: "direct_message",
+            data: {
+              ...message,
+              sender: currentUser,
+            },
+          })
+        );
       }
 
       res.json(message);
@@ -912,14 +1033,20 @@ export async function registerRoutes(
       }
 
       const openRouterApiKey = process.env.OPENROUTER_API_KEY;
-      const openRouterModel = process.env.OPENROUTER_MODEL || "google/gemini-2.0-flash-exp:free";
+      const openRouterModel =
+        process.env.OPENROUTER_MODEL || "google/gemini-2.0-flash-exp:free";
 
-      console.log("Support chat request received. API Key configured:", !!openRouterApiKey);
+      console.log(
+        "Support chat request received. API Key configured:",
+        !!openRouterApiKey
+      );
 
       if (!openRouterApiKey || openRouterApiKey.trim() === "") {
-        console.log("OpenRouter API key not configured, using default response");
-        return res.json({ 
-          response: getDefaultSupportResponse(language || "en")
+        console.log(
+          "OpenRouter API key not configured, using default response"
+        );
+        return res.json({
+          response: getDefaultSupportResponse(language || "en"),
         });
       }
 
@@ -945,32 +1072,37 @@ Language Instructions:
 
       try {
         console.log("Calling OpenRouter API with model:", openRouterModel);
-        
-        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${openRouterApiKey.trim()}`,
-            "Content-Type": "application/json",
-            "HTTP-Referer": process.env.SITE_URL || "http://localhost:5000",
-            "X-Title": "LocalLinkChat Support"
-          },
-          body: JSON.stringify({
-            model: openRouterModel,
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: message }
-            ],
-            max_tokens: 500,
-            temperature: 0.7
-          })
-        });
+
+        const response = await fetch(
+          "https://openrouter.ai/api/v1/chat/completions",
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${openRouterApiKey.trim()}`,
+              "Content-Type": "application/json",
+              "HTTP-Referer": process.env.SITE_URL || "http://localhost:5000",
+              "X-Title": "LocalLinkChat Support",
+            },
+            body: JSON.stringify({
+              model: openRouterModel,
+              messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: message },
+              ],
+              max_tokens: 500,
+              temperature: 0.7,
+            }),
+          }
+        );
 
         const responseText = await response.text();
         console.log("OpenRouter response status:", response.status);
 
         if (!response.ok) {
           console.error("OpenRouter API error response:", responseText);
-          return res.json({ response: getDefaultSupportResponse(language || "en") });
+          return res.json({
+            response: getDefaultSupportResponse(language || "en"),
+          });
         }
 
         const data = JSON.parse(responseText);
@@ -978,7 +1110,9 @@ Language Instructions:
 
         if (!aiResponse) {
           console.error("No AI response in data:", data);
-          return res.json({ response: getDefaultSupportResponse(language || "en") });
+          return res.json({
+            response: getDefaultSupportResponse(language || "en"),
+          });
         }
 
         console.log("AI response received successfully");
@@ -996,33 +1130,38 @@ Language Instructions:
   // ==================== POSTS API ====================
 
   // Serve post images statically
-  app.use("/post_images", express.static(path.join(process.cwd(), "post_images")));
+  app.use(
+    "/post_images",
+    express.static(path.join(process.cwd(), "post_images"))
+  );
 
   // Get all posts with optional filters
   app.get("/api/posts", async (req: Request, res: Response) => {
     try {
       const currentUser = await getCurrentUser(req);
-      const sortBy = req.query.sortBy as 'newest' | 'likes' | undefined;
-      const filterBy = req.query.filterBy as 'all' | 'connections' | undefined;
-      
+      const sortBy = req.query.sortBy as "newest" | "likes" | undefined;
+      const filterBy = req.query.filterBy as "all" | "connections" | undefined;
+
       let connectionIds: string[] | undefined;
-      
-      if (filterBy === 'connections' && currentUser) {
+
+      if (filterBy === "connections" && currentUser) {
         const connections = await storage.getConnectionsByUser(currentUser.id);
-        const acceptedConnections = connections.filter(c => c.status === "accepted");
-        connectionIds = acceptedConnections.map(c => 
+        const acceptedConnections = connections.filter(
+          (c) => c.status === "accepted"
+        );
+        connectionIds = acceptedConnections.map((c) =>
           c.requesterId === currentUser.id ? c.receiverId : c.requesterId
         );
         // Include own posts when filtering by connections
         connectionIds.push(currentUser.id);
       }
-      
+
       const posts = await storage.getPosts({
-        sortBy: sortBy || 'newest',
+        sortBy: sortBy || "newest",
         connectionIds,
         currentUserId: currentUser?.id,
       });
-      
+
       res.json(posts);
     } catch (error) {
       console.error("Error fetching posts:", error);
@@ -1035,21 +1174,21 @@ Language Instructions:
     try {
       const currentUser = await getCurrentUser(req);
       const post = await storage.getPost(req.params.id);
-      
+
       if (!post) {
         return res.status(404).json({ error: "Post not found" });
       }
-      
+
       const user = await storage.getUser(post.userId);
       const likeCounts = await storage.getPostLikesCount(post.id);
       const comments = await storage.getPostComments(post.id);
-      
-      let userReaction: 'like' | 'dislike' | null = null;
+
+      let userReaction: "like" | "dislike" | null = null;
       if (currentUser) {
         const reaction = await storage.getPostLike(post.id, currentUser.id);
-        userReaction = reaction?.type as 'like' | 'dislike' | null;
+        userReaction = reaction?.type as "like" | "dislike" | null;
       }
-      
+
       res.json({
         ...post,
         user,
@@ -1070,20 +1209,20 @@ Language Instructions:
       if (!currentUser) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const { content, imageUrl } = req.body;
-      
+
       if (!content || content.trim() === "") {
         return res.status(400).json({ error: "Content is required" });
       }
-      
+
       const post = await storage.createPost({
         userId: currentUser.id,
         content: content.trim(),
         imageUrl: imageUrl || null,
         createdAt: new Date().toISOString(),
       });
-      
+
       res.json({
         ...post,
         user: currentUser,
@@ -1105,16 +1244,18 @@ Language Instructions:
       if (!currentUser) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const post = await storage.getPost(req.params.id);
       if (!post) {
         return res.status(404).json({ error: "Post not found" });
       }
-      
+
       if (post.userId !== currentUser.id) {
-        return res.status(403).json({ error: "Not authorized to delete this post" });
+        return res
+          .status(403)
+          .json({ error: "Not authorized to delete this post" });
       }
-      
+
       await storage.deletePost(req.params.id);
       res.json({ success: true });
     } catch (error) {
@@ -1129,21 +1270,24 @@ Language Instructions:
       if (!currentUser) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const postId = req.params.id;
       const { type } = req.body; // 'like' or 'dislike'
-      
-      if (!['like', 'dislike'].includes(type)) {
+
+      if (!["like", "dislike"].includes(type)) {
         return res.status(400).json({ error: "Invalid reaction type" });
       }
-      
+
       const post = await storage.getPost(postId);
       if (!post) {
         return res.status(404).json({ error: "Post not found" });
       }
-      
-      const existingReaction = await storage.getPostLike(postId, currentUser.id);
-      
+
+      const existingReaction = await storage.getPostLike(
+        postId,
+        currentUser.id
+      );
+
       if (existingReaction) {
         if (existingReaction.type === type) {
           // Remove the reaction if clicking same type
@@ -1161,10 +1305,10 @@ Language Instructions:
           createdAt: new Date().toISOString(),
         });
       }
-      
+
       const likeCounts = await storage.getPostLikesCount(postId);
       const newReaction = await storage.getPostLike(postId, currentUser.id);
-      
+
       res.json({
         likesCount: likeCounts.likes,
         dislikesCount: likeCounts.dislikes,
@@ -1193,26 +1337,26 @@ Language Instructions:
       if (!currentUser) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const postId = req.params.id;
       const { content } = req.body;
-      
+
       if (!content || content.trim() === "") {
         return res.status(400).json({ error: "Content is required" });
       }
-      
+
       const post = await storage.getPost(postId);
       if (!post) {
         return res.status(404).json({ error: "Post not found" });
       }
-      
+
       const comment = await storage.createPostComment({
         postId,
         userId: currentUser.id,
         content: content.trim(),
         createdAt: new Date().toISOString(),
       });
-      
+
       res.json({
         ...comment,
         user: currentUser,
@@ -1224,36 +1368,46 @@ Language Instructions:
   });
 
   // Delete comment (only own comments)
-  app.delete("/api/posts/:postId/comments/:commentId", async (req: Request, res: Response) => {
-    try {
-      const currentUser = await getCurrentUser(req);
-      if (!currentUser) {
-        return res.status(401).json({ error: "Not authenticated" });
+  app.delete(
+    "/api/posts/:postId/comments/:commentId",
+    async (req: Request, res: Response) => {
+      try {
+        const currentUser = await getCurrentUser(req);
+        if (!currentUser) {
+          return res.status(401).json({ error: "Not authenticated" });
+        }
+
+        // Note: We'd need to get the comment to check ownership
+        // For now, we'll allow deletion
+        await storage.deletePostComment(req.params.commentId);
+        res.json({ success: true });
+      } catch (error) {
+        res.status(500).json({ error: "Failed to delete comment" });
       }
-      
-      // Note: We'd need to get the comment to check ownership
-      // For now, we'll allow deletion
-      await storage.deletePostComment(req.params.commentId);
-      res.json({ success: true });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to delete comment" });
     }
-  });
+  );
 
   // ==================== SHORTS/REALS API ====================
 
   // Serve short videos statically
-  app.use("/short_videos", express.static(path.join(process.cwd(), "short_videos")));
+  app.use(
+    "/short_videos",
+    express.static(path.join(process.cwd(), "short_videos"))
+  );
 
   // Get all shorts (with optional pagination and random selection)
   app.get("/api/shorts", async (req: Request, res: Response) => {
     try {
-      const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
-      const offset = req.query.offset ? parseInt(req.query.offset as string) : 0;
+      const limit = req.query.limit
+        ? parseInt(req.query.limit as string)
+        : undefined;
+      const offset = req.query.offset
+        ? parseInt(req.query.offset as string)
+        : 0;
       const random = req.query.random === "true";
-      
+
       const result = await storage.getShorts({ limit, offset, random });
-      
+
       // For backwards compatibility with existing code that expects an array,
       // check if pagination params are explicitly used
       if (req.query.offset !== undefined || req.query.paginated === "true") {
@@ -1279,11 +1433,11 @@ Language Instructions:
   app.get("/api/shorts/:id", async (req: Request, res: Response) => {
     try {
       const short = await storage.getShort(req.params.id);
-      
+
       if (!short) {
         return res.status(404).json({ error: "Short not found" });
       }
-      
+
       const user = await storage.getUser(short.userId);
       res.json({ ...short, user });
     } catch (error) {
@@ -1298,13 +1452,13 @@ Language Instructions:
       if (!currentUser) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const { title, description, videoUrl, thumbnailUrl, duration } = req.body;
-      
+
       if (!videoUrl) {
         return res.status(400).json({ error: "Video URL is required" });
       }
-      
+
       const short = await storage.createShort({
         userId: currentUser.id,
         title: title || null,
@@ -1315,7 +1469,7 @@ Language Instructions:
         viewCount: 0,
         createdAt: new Date().toISOString(),
       });
-      
+
       res.json({
         ...short,
         user: currentUser,
@@ -1333,16 +1487,18 @@ Language Instructions:
       if (!currentUser) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const short = await storage.getShort(req.params.id);
       if (!short) {
         return res.status(404).json({ error: "Short not found" });
       }
-      
+
       if (short.userId !== currentUser.id) {
-        return res.status(403).json({ error: "Not authorized to delete this short" });
+        return res
+          .status(403)
+          .json({ error: "Not authorized to delete this short" });
       }
-      
+
       await storage.deleteShort(req.params.id);
       res.json({ success: true });
     } catch (error) {
@@ -1367,21 +1523,24 @@ Language Instructions:
       if (!currentUser) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const shortId = req.params.id;
       const { type } = req.body; // 'like' or 'dislike'
-      
-      if (!['like', 'dislike'].includes(type)) {
+
+      if (!["like", "dislike"].includes(type)) {
         return res.status(400).json({ error: "Invalid reaction type" });
       }
-      
+
       const short = await storage.getShort(shortId);
       if (!short) {
         return res.status(404).json({ error: "Short not found" });
       }
-      
-      const existingReaction = await storage.getShortLike(shortId, currentUser.id);
-      
+
+      const existingReaction = await storage.getShortLike(
+        shortId,
+        currentUser.id
+      );
+
       if (existingReaction) {
         if (existingReaction.type === type) {
           // Remove the reaction if clicking same type
@@ -1399,10 +1558,10 @@ Language Instructions:
           createdAt: new Date().toISOString(),
         });
       }
-      
+
       const likeCounts = await storage.getShortLikesCount(shortId);
       const newReaction = await storage.getShortLike(shortId, currentUser.id);
-      
+
       res.json({
         likesCount: likeCounts.likes,
         dislikesCount: likeCounts.dislikes,
@@ -1431,26 +1590,26 @@ Language Instructions:
       if (!currentUser) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const shortId = req.params.id;
       const { content } = req.body;
-      
+
       if (!content || content.trim() === "") {
         return res.status(400).json({ error: "Content is required" });
       }
-      
+
       const short = await storage.getShort(shortId);
       if (!short) {
         return res.status(404).json({ error: "Short not found" });
       }
-      
+
       const comment = await storage.createShortComment({
         shortId,
         userId: currentUser.id,
         content: content.trim(),
         createdAt: new Date().toISOString(),
       });
-      
+
       res.json({
         ...comment,
         user: currentUser,
@@ -1466,21 +1625,21 @@ Language Instructions:
     try {
       const currentUser = await getCurrentUser(req);
       const short = await storage.getShort(req.params.id);
-      
+
       if (!short) {
         return res.status(404).json({ error: "Short not found" });
       }
-      
+
       const user = await storage.getUser(short.userId);
       const likeCounts = await storage.getShortLikesCount(short.id);
       const comments = await storage.getShortComments(short.id);
-      
+
       let userReaction: string | null = null;
       if (currentUser) {
         const reaction = await storage.getShortLike(short.id, currentUser.id);
         userReaction = reaction?.type || null;
       }
-      
+
       res.json({
         ...short,
         user,
@@ -1503,7 +1662,7 @@ Language Instructions:
       if (!currentUser) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const userGroups = await storage.getGroupsByUser(currentUser.id);
       res.json(userGroups);
     } catch (error) {
@@ -1518,7 +1677,7 @@ Language Instructions:
       if (!currentUser) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const invitations = await storage.getGroupInvitations(currentUser.id);
       res.json(invitations);
     } catch (error) {
@@ -1533,13 +1692,13 @@ Language Instructions:
       if (!currentUser) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const { name, description, memberIds } = req.body;
-      
+
       if (!name || name.trim() === "") {
         return res.status(400).json({ error: "Group name is required" });
       }
-      
+
       // Create the group
       const group = await storage.createGroup({
         name: name.trim(),
@@ -1548,7 +1707,7 @@ Language Instructions:
         createdById: currentUser.id,
         createdAt: new Date().toISOString(),
       });
-      
+
       // Add creator as admin member (auto-accepted)
       await storage.createGroupMember({
         groupId: group.id,
@@ -1559,7 +1718,7 @@ Language Instructions:
         createdAt: new Date().toISOString(),
         joinedAt: new Date().toISOString(),
       });
-      
+
       // Invite other members
       if (memberIds && Array.isArray(memberIds)) {
         for (const memberId of memberIds) {
@@ -1574,35 +1733,39 @@ Language Instructions:
               createdAt: new Date().toISOString(),
               joinedAt: null,
             });
-            
+
             // Create notification for the invited user
             await storage.createNotification({
               userId: memberId,
               type: "group_invitation",
               fromUserId: currentUser.id,
               connectionId: group.id, // Using connectionId to store groupId
-              message: `${currentUser.fullName || currentUser.name} invited you to join "${group.name}"`,
+              message: `${
+                currentUser.fullName || currentUser.name
+              } invited you to join "${group.name}"`,
               read: false,
               createdAt: new Date().toISOString(),
             });
-            
+
             // Notify via WebSocket if user is online
             const recipientWs = userConnections.get(memberId);
             if (recipientWs && recipientWs.readyState === WebSocket.OPEN) {
-              recipientWs.send(JSON.stringify({
-                type: "notification",
-                data: {
-                  type: "group_invitation",
-                  fromUser: currentUser,
-                  groupId: group.id,
-                  groupName: group.name,
-                },
-              }));
+              recipientWs.send(
+                JSON.stringify({
+                  type: "notification",
+                  data: {
+                    type: "group_invitation",
+                    fromUser: currentUser,
+                    groupId: group.id,
+                    groupName: group.name,
+                  },
+                })
+              );
             }
           }
         }
       }
-      
+
       res.json(group);
     } catch (error) {
       console.error("Error creating group:", error);
@@ -1617,21 +1780,23 @@ Language Instructions:
       if (!currentUser) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const group = await storage.getGroup(req.params.id);
       if (!group) {
         return res.status(404).json({ error: "Group not found" });
       }
-      
+
       // Check if user is a member
       const membership = await storage.getGroupMember(group.id, currentUser.id);
       if (!membership || membership.status !== "accepted") {
-        return res.status(403).json({ error: "You are not a member of this group" });
+        return res
+          .status(403)
+          .json({ error: "You are not a member of this group" });
       }
-      
+
       const members = await storage.getGroupMembers(group.id);
-      const acceptedMembers = members.filter(m => m.status === "accepted");
-      
+      const acceptedMembers = members.filter((m) => m.status === "accepted");
+
       res.json({
         ...group,
         members: acceptedMembers,
@@ -1649,20 +1814,24 @@ Language Instructions:
       if (!currentUser) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const groupId = req.params.id;
       const membership = await storage.getGroupMember(groupId, currentUser.id);
-      
+
       if (!membership) {
         return res.status(404).json({ error: "Invitation not found" });
       }
-      
+
       if (membership.status !== "pending") {
         return res.status(400).json({ error: "Invitation already processed" });
       }
-      
-      await storage.updateGroupMemberStatus(membership.id, "accepted", new Date().toISOString());
-      
+
+      await storage.updateGroupMemberStatus(
+        membership.id,
+        "accepted",
+        new Date().toISOString()
+      );
+
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to accept invitation" });
@@ -1676,20 +1845,20 @@ Language Instructions:
       if (!currentUser) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const groupId = req.params.id;
       const membership = await storage.getGroupMember(groupId, currentUser.id);
-      
+
       if (!membership) {
         return res.status(404).json({ error: "Invitation not found" });
       }
-      
+
       if (membership.status !== "pending") {
         return res.status(400).json({ error: "Invitation already processed" });
       }
-      
+
       await storage.updateGroupMemberStatus(membership.id, "declined");
-      
+
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to decline invitation" });
@@ -1703,28 +1872,34 @@ Language Instructions:
       if (!currentUser) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const groupId = req.params.id;
       const group = await storage.getGroup(groupId);
-      
+
       if (!group) {
         return res.status(404).json({ error: "Group not found" });
       }
-      
+
       const membership = await storage.getGroupMember(groupId, currentUser.id);
-      
+
       if (!membership || membership.status !== "accepted") {
-        return res.status(400).json({ error: "You are not a member of this group" });
+        return res
+          .status(400)
+          .json({ error: "You are not a member of this group" });
       }
-      
+
       // Check if user is the only admin
       const members = await storage.getGroupMembers(groupId);
-      const acceptedAdmins = members.filter(m => m.status === "accepted" && m.role === "admin");
-      
+      const acceptedAdmins = members.filter(
+        (m) => m.status === "accepted" && m.role === "admin"
+      );
+
       if (membership.role === "admin" && acceptedAdmins.length === 1) {
         // If last admin, check if there are other members to transfer to
-        const acceptedMembers = members.filter(m => m.status === "accepted" && m.userId !== currentUser.id);
-        
+        const acceptedMembers = members.filter(
+          (m) => m.status === "accepted" && m.userId !== currentUser.id
+        );
+
         if (acceptedMembers.length === 0) {
           // Delete the group if no other members
           await storage.deleteGroup(groupId);
@@ -1736,9 +1911,9 @@ Language Instructions:
           // Update role manually (we'd need a separate method, but for now just remove the leaving user)
         }
       }
-      
+
       await storage.deleteGroupMember(groupId, currentUser.id);
-      
+
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to leave group" });
@@ -1752,23 +1927,27 @@ Language Instructions:
       if (!currentUser) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const groupId = req.params.id;
-      
+
       // Check if user is a member
       const membership = await storage.getGroupMember(groupId, currentUser.id);
       if (!membership || membership.status !== "accepted") {
-        return res.status(403).json({ error: "You are not a member of this group" });
+        return res
+          .status(403)
+          .json({ error: "You are not a member of this group" });
       }
-      
+
       const messages = await storage.getGroupMessages(groupId);
-      
+
       // Fetch reactions for each message
-      const messagesWithReactions = await Promise.all(messages.map(async (msg) => {
-        const reactions = await storage.getMessageReactions(msg.id, 'group');
-        return { ...msg, reactions };
-      }));
-      
+      const messagesWithReactions = await Promise.all(
+        messages.map(async (msg) => {
+          const reactions = await storage.getMessageReactions(msg.id, "group");
+          return { ...msg, reactions };
+        })
+      );
+
       res.json(messagesWithReactions);
     } catch (error) {
       res.status(500).json({ error: "Failed to get messages" });
@@ -1782,45 +1961,51 @@ Language Instructions:
       if (!currentUser) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const groupId = req.params.id;
       const { content } = req.body;
-      
+
       if (!content || content.trim() === "") {
         return res.status(400).json({ error: "Content is required" });
       }
-      
+
       // Check if user is a member
       const membership = await storage.getGroupMember(groupId, currentUser.id);
       if (!membership || membership.status !== "accepted") {
-        return res.status(403).json({ error: "You are not a member of this group" });
+        return res
+          .status(403)
+          .json({ error: "You are not a member of this group" });
       }
-      
+
       const message = await storage.createGroupMessage({
         groupId,
         senderId: currentUser.id,
         content: content.trim(),
         timestamp: new Date().toISOString(),
       });
-      
+
       // Notify other group members via WebSocket
       const members = await storage.getGroupMembers(groupId);
-      const acceptedMembers = members.filter(m => m.status === "accepted" && m.userId !== currentUser.id);
-      
+      const acceptedMembers = members.filter(
+        (m) => m.status === "accepted" && m.userId !== currentUser.id
+      );
+
       for (const member of acceptedMembers) {
         const memberWs = userConnections.get(member.userId);
         if (memberWs && memberWs.readyState === WebSocket.OPEN) {
-          memberWs.send(JSON.stringify({
-            type: "group_message",
-            data: {
-              ...message,
-              sender: currentUser,
-              groupId,
-            },
-          }));
+          memberWs.send(
+            JSON.stringify({
+              type: "group_message",
+              data: {
+                ...message,
+                sender: currentUser,
+                groupId,
+              },
+            })
+          );
         }
       }
-      
+
       res.json({
         ...message,
         sender: currentUser,
@@ -1838,34 +2023,39 @@ Language Instructions:
       if (!currentUser) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const groupId = req.params.id;
       const { userIds } = req.body;
-      
+
       if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
         return res.status(400).json({ error: "User IDs are required" });
       }
-      
+
       const group = await storage.getGroup(groupId);
       if (!group) {
         return res.status(404).json({ error: "Group not found" });
       }
-      
+
       // Check if current user is a member
       const membership = await storage.getGroupMember(groupId, currentUser.id);
       if (!membership || membership.status !== "accepted") {
-        return res.status(403).json({ error: "You are not a member of this group" });
+        return res
+          .status(403)
+          .json({ error: "You are not a member of this group" });
       }
-      
+
       const invited: string[] = [];
-      
+
       for (const userId of userIds) {
         // Check if user is already a member
-        const existingMembership = await storage.getGroupMember(groupId, userId);
+        const existingMembership = await storage.getGroupMember(
+          groupId,
+          userId
+        );
         if (existingMembership) {
           continue; // Skip if already invited/member
         }
-        
+
         // Create pending membership
         await storage.createGroupMember({
           groupId,
@@ -1876,35 +2066,39 @@ Language Instructions:
           createdAt: new Date().toISOString(),
           joinedAt: null,
         });
-        
+
         // Create notification
         await storage.createNotification({
           userId,
           type: "group_invitation",
           fromUserId: currentUser.id,
           connectionId: groupId,
-          message: `${currentUser.fullName || currentUser.name} invited you to join "${group.name}"`,
+          message: `${
+            currentUser.fullName || currentUser.name
+          } invited you to join "${group.name}"`,
           read: false,
           createdAt: new Date().toISOString(),
         });
-        
+
         // Notify via WebSocket
         const recipientWs = userConnections.get(userId);
         if (recipientWs && recipientWs.readyState === WebSocket.OPEN) {
-          recipientWs.send(JSON.stringify({
-            type: "notification",
-            data: {
-              type: "group_invitation",
-              fromUser: currentUser,
-              groupId: group.id,
-              groupName: group.name,
-            },
-          }));
+          recipientWs.send(
+            JSON.stringify({
+              type: "notification",
+              data: {
+                type: "group_invitation",
+                fromUser: currentUser,
+                groupId: group.id,
+                groupName: group.name,
+              },
+            })
+          );
         }
-        
+
         invited.push(userId);
       }
-      
+
       res.json({ success: true, invited });
     } catch (error) {
       console.error("Error inviting users:", error);
@@ -1919,7 +2113,7 @@ function getDefaultSupportResponse(language: string): string {
   const responses: Record<string, string> = {
     en: "Thank you for reaching out! Our support team will get back to you soon. In the meantime, you can explore the Discover page to find new connections or check out your profile settings.",
     hu: "Köszönjük, hogy felkerested! Támogatói csapatunk hamarosan válaszol. Addig is böngészheted a Felfedezés oldalt új kapcsolatokért, vagy nézd meg a profil beállításaidat.",
-    de: "Vielen Dank für Ihre Nachricht! Unser Support-Team wird sich bald bei Ihnen melden. In der Zwischenzeit können Sie die Entdecken-Seite erkunden, um neue Verbindungen zu finden, oder Ihre Profileinstellungen überprüfen."
+    de: "Vielen Dank für Ihre Nachricht! Unser Support-Team wird sich bald bei Ihnen melden. In der Zwischenzeit können Sie die Entdecken-Seite erkunden, um neue Verbindungen zu finden, oder Ihre Profileinstellungen überprüfen.",
   };
   return responses[language] || responses.en;
 }
