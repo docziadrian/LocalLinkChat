@@ -958,7 +958,7 @@ export function ChatTray({ wsRef, onNewMessage }: ChatTrayProps) {
                     />
                     <Button
                       size="icon"
-                      className="h-8 w-8 sm:h-9 sm:w-9"
+                      className="h-9 w-9 sm:h-9 sm:w-9"
                       onClick={() => sendMessage(chat.user.id)}
                       disabled={
                         !inputValues[chat.user.id]?.trim() &&
