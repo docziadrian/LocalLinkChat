@@ -68,7 +68,7 @@ export async function registerRoutes(
         if (data.type === "direct_message" && userId) {
           const { receiverId, content } = data;
 
-          // Check if users are connected
+          // Check if users are connectedd
           const connection = await storage.getConnectionBetweenUsers(
             userId,
             receiverId

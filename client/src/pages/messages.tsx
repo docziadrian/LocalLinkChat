@@ -73,7 +73,7 @@ import type {
   MessageReadReceipt,
 } from "@shared/schema";
 
-// Supported emoji reactions
+// Supported emoji reactionse
 const EMOJI_REACTIONS = ["😂", "❤", "👍", "😒", "😠"] as const;
 
 // GIF Picker component using GIPHY
